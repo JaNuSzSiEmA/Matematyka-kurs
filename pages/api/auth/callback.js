@@ -11,12 +11,18 @@ export default async function handler(req, res) {
     const access_token = s.access_token || body.access_token;
     const refresh_token = s.refresh_token || body.refresh_token;
 
-    const base = 'Path=/; HttpOnly; Secure; SameSite=Lax';
+    // Share cookies across apex and www
+    const explicitDomain = process.env.NEXT_PUBLIC_COOKIE_DOMAIN; // e.g. ".maturatesty.pl"
+    const host = req.headers.host ? req.headers.host.split(':')[0] : '';
+    const apexFromHost = host.replace(/^www\./, '');
+    const domain = explicitDomain || (apexFromHost ? `.${apexFromHost}` : undefined);
+
+    const base = `Path=/; HttpOnly; Secure; SameSite=Lax${domain ? `; Domain=${domain}` : ''}`;
 
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       if (!access_token || !refresh_token) {
         return res.status(400).json({ error: 'Missing access_token or refresh_token' });
-      }
+        }
       res.setHeader('Set-Cookie', [
         `sb-access-token=${access_token}; ${base}; Max-Age=604800`,   // 7 days
         `sb-refresh-token=${refresh_token}; ${base}; Max-Age=2592000` // 30 days
