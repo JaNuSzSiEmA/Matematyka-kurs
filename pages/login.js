@@ -22,17 +22,22 @@ export default function LoginPage() {
   const [sessionEmail, setSessionEmail] = useState(null);
   const syncedRef = useRef(false);
 
-  // Robust redirect helper with fallback
+  // Robust redirect helper: send tokens to server, then navigate
   async function syncAndRedirect(session) {
     try {
-      await fetch('/api/auth/callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ event: 'SIGNED_IN', session }),
-      });
+      const tokens = session
+        ? { access_token: session.access_token, refresh_token: session.refresh_token }
+        : null;
+      if (tokens?.access_token && tokens?.refresh_token) {
+        await fetch('/api/auth/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ event: 'SIGNED_IN', session: tokens }),
+        });
+      }
     } catch {
-      // ignore network errors
+      // ignore
     }
 
     const redirectedFrom = router.query.redirectedFrom;
@@ -41,25 +46,26 @@ export default function LoginPage() {
         ? redirectedFrom
         : '/dashboard';
 
-    // Try client-side navigation first
+    // Try client-side navigation; hard-fallback in case it stalls
     try {
       await router.replace(dest);
-      // Hard fallback after 300ms in case client routing stalls
       setTimeout(() => {
-        if (window.location.pathname !== dest) window.location.assign(dest);
+        if (typeof window !== 'undefined' && window.location.pathname !== dest) {
+          window.location.assign(dest);
+        }
       }, 300);
     } catch {
-      window.location.assign(dest);
+      if (typeof window !== 'undefined') window.location.assign(dest);
     }
   }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      setSessionEmail(data?.session?.user?.email ?? null);
-      // If we land on /login with a session (e.g., magic link), sync and redirect once
-      if (data?.session && !syncedRef.current) {
+      const s = data?.session || null;
+      setSessionEmail(s?.user?.email ?? null);
+      if (s && !syncedRef.current) {
         syncedRef.current = true;
-        syncAndRedirect(data.session);
+        syncAndRedirect(s);
       }
     });
 
@@ -102,7 +108,6 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          // After clicking the email link, user lands on /login, which will sync cookie and redirect
           emailRedirectTo: `${site}/login`,
         },
       });
