@@ -22,7 +22,7 @@ export default function LoginPage() {
   const [sessionEmail, setSessionEmail] = useState(null);
   const syncedRef = useRef(false);
 
-  // Helper: sync session cookie for middleware and redirect
+  // Robust redirect helper with fallback
   async function syncAndRedirect(session) {
     try {
       await fetch('/api/auth/callback', {
@@ -32,20 +32,31 @@ export default function LoginPage() {
         body: JSON.stringify({ event: 'SIGNED_IN', session }),
       });
     } catch {
-      // ignore network errors; redirect anyway
+      // ignore network errors
     }
+
     const redirectedFrom = router.query.redirectedFrom;
     const dest =
       typeof redirectedFrom === 'string' && redirectedFrom.startsWith('/')
         ? redirectedFrom
         : '/dashboard';
-    router.replace(dest);
+
+    // Try client-side navigation first
+    try {
+      await router.replace(dest);
+      // Hard fallback after 300ms in case client routing stalls
+      setTimeout(() => {
+        if (window.location.pathname !== dest) window.location.assign(dest);
+      }, 300);
+    } catch {
+      window.location.assign(dest);
+    }
   }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSessionEmail(data?.session?.user?.email ?? null);
-      // If we land on /login after a magic link and already have a session, sync and redirect
+      // If we land on /login with a session (e.g., magic link), sync and redirect once
       if (data?.session && !syncedRef.current) {
         syncedRef.current = true;
         syncAndRedirect(data.session);
@@ -54,7 +65,6 @@ export default function LoginPage() {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionEmail(session?.user?.email ?? null);
-      // When session appears (e.g., after magic link), sync cookies and redirect once
       if (session && !syncedRef.current) {
         syncedRef.current = true;
         syncAndRedirect(session);
@@ -108,7 +118,6 @@ export default function LoginPage() {
     setMsg('');
     try {
       const { error } = await supabase.auth.signOut();
-      // Clear server cookies so middleware treats you as logged out
       try {
         await fetch('/api/auth/callback', {
           method: 'POST',
@@ -233,7 +242,7 @@ function btn(extra = {}) {
   return {
     padding: '10px 12px',
     borderRadius: 10,
-    border: '1px solid #111827',
+    border: '1px solid '#111827',
     background: '#111827',
     color: 'white',
     cursor: 'pointer',
