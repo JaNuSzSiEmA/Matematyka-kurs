@@ -1,62 +1,34 @@
 import { NextResponse } from 'next/server';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 
-export async function middleware(req) {
-  const res = NextResponse.next();
+export function middleware(req) {
+  const url = req.nextUrl.clone();
+  const { pathname } = url;
 
-  let session = null;
-  try {
-    // Read envs explicitly (required in Edge/middleware)
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  // If the auth cookie exists, treat user as logged in
+  const isLoggedIn = Boolean(req.cookies.get('sb-access-token')?.value);
 
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-    }
-
-    // Create Supabase client for middleware
-    const supabase = createMiddlewareClient(
-      { req, res },
-      { supabaseUrl, supabaseKey }
-    );
-
-    const {
-      data: { session: s },
-    } = await supabase.auth.getSession();
-    session = s ?? null;
-  } catch (err) {
-    // Don’t fail the whole request — just treat as logged out
-    console.error('Middleware auth error:', err?.message || err);
-    session = null;
-  }
-
-  const { pathname } = req.nextUrl;
-
-  // Root: redirect based on session
+  // Home → login or dashboard
   if (pathname === '/') {
-    const url = req.nextUrl.clone();
-    url.pathname = session ? '/dashboard' : '/login';
+    url.pathname = isLoggedIn ? '/dashboard' : '/login';
     return NextResponse.redirect(url);
   }
 
   // Logged-in users shouldn’t see /login
-  if (pathname === '/login' && session) {
-    const url = req.nextUrl.clone();
+  if (pathname === '/login' && isLoggedIn) {
     url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 
-  // Protect /dashboard and /admin
+  // Protect these paths
   const protectedPrefixes = ['/dashboard', '/admin'];
   const isProtected = protectedPrefixes.some((p) => pathname.startsWith(p));
-  if (isProtected && !session) {
-    const url = req.nextUrl.clone();
+  if (isProtected && !isLoggedIn) {
     url.pathname = '/login';
     url.searchParams.set('redirectedFrom', pathname);
     return NextResponse.redirect(url);
   }
 
-  return res;
+  return NextResponse.next();
 }
 
 export const config = {
