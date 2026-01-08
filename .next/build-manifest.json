@@ -27,16 +27,6 @@
       "static/chunks/main.js",
       "static/chunks/pages/admin.js"
     ],
-    "/admin/sections": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/admin/sections.js"
-    ],
-    "/admin/sections/[section_id]/islands": [
-      "static/chunks/webpack.js",
-      "static/chunks/main.js",
-      "static/chunks/pages/admin/sections/[section_id]/islands.js"
-    ],
     "/dashboard": [
       "static/chunks/webpack.js",
       "static/chunks/main.js",
