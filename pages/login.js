@@ -242,7 +242,7 @@ function btn(extra = {}) {
   return {
     padding: '10px 12px',
     borderRadius: 10,
-    border: '1px solid '#111827',
+    border: '1px solid #111827',
     background: '#111827',
     color: 'white',
     cursor: 'pointer',
