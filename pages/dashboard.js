@@ -70,6 +70,23 @@ export default function DashboardPage() {
     }));
   }, [sections, sectionStats]);
 
+  // Sign out handler (clears Supabase + server cookies, goes to /login)
+  async function handleSignOut() {
+    try {
+      await supabase.auth.signOut();
+      try {
+        await fetch('/api/auth/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ event: 'SIGNED_OUT' }),
+        });
+      } catch {}
+    } finally {
+      router.replace('/login');
+    }
+  }
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -211,7 +228,16 @@ export default function DashboardPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Panel ucznia</h1>
-            <p className="text-sm text-gray-600">Zalogowany: {userEmail}</p>
+            <div className="mt-1 flex items-center gap-2 text-sm text-gray-600">
+              <span>Zalogowany: {userEmail || '—'}</span>
+              <button
+                type="button"
+                onClick={handleSignOut}
+                className="rounded-xl border border-gray-900 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                Wyloguj
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-2">
