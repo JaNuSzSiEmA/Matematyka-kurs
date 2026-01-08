@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -8,6 +9,8 @@ const supabase = createClient(
 );
 
 export default function LoginPage() {
+  const router = useRouter();
+
   const [mode, setMode] = useState('password'); // 'password' | 'magic'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,27 +20,62 @@ export default function LoginPage() {
 
   // Optional: show current session status
   const [sessionEmail, setSessionEmail] = useState(null);
+  const syncedRef = useRef(false);
+
+  // Helper: sync session cookie for middleware and redirect
+  async function syncAndRedirect(session) {
+    try {
+      await fetch('/api/auth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ event: 'SIGNED_IN', session }),
+      });
+    } catch {
+      // ignore network errors; redirect anyway
+    }
+    const redirectedFrom = router.query.redirectedFrom;
+    const dest =
+      typeof redirectedFrom === 'string' && redirectedFrom.startsWith('/')
+        ? redirectedFrom
+        : '/dashboard';
+    router.replace(dest);
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSessionEmail(data?.session?.user?.email ?? null);
+      // If we land on /login after a magic link and already have a session, sync and redirect
+      if (data?.session && !syncedRef.current) {
+        syncedRef.current = true;
+        syncAndRedirect(data.session);
+      }
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionEmail(session?.user?.email ?? null);
+      // When session appears (e.g., after magic link), sync cookies and redirect once
+      if (session && !syncedRef.current) {
+        syncedRef.current = true;
+        syncAndRedirect(session);
+      }
     });
 
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [router.query.redirectedFrom]);
 
   async function signInWithPassword(e) {
     e.preventDefault();
     setMsg('');
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setMsg('Error: ' + error.message);
-      else setMsg('Signed in! You can now open your course page.');
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        setMsg('Error: ' + error.message);
+      } else {
+        setMsg('Signed in! Redirecting…');
+        await syncAndRedirect(data.session);
+      }
     } finally {
       setLoading(false);
     }
@@ -48,11 +86,14 @@ export default function LoginPage() {
     setMsg('');
     setLoading(true);
     try {
+      const site =
+        process.env.NEXT_PUBLIC_SITE_URL ||
+        (typeof window !== 'undefined' ? window.location.origin : '');
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: {
-          // Where user lands after clicking email link
-          emailRedirectTo: 'http://localhost:3000/login',
+          // After clicking the email link, user lands on /login, which will sync cookie and redirect
+          emailRedirectTo: `${site}/login`,
         },
       });
       if (error) setMsg('Error: ' + error.message);
@@ -67,6 +108,15 @@ export default function LoginPage() {
     setMsg('');
     try {
       const { error } = await supabase.auth.signOut();
+      // Clear server cookies so middleware treats you as logged out
+      try {
+        await fetch('/api/auth/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ event: 'SIGNED_OUT' }),
+        });
+      } catch {}
       if (error) setMsg('Error: ' + error.message);
       else setMsg('Signed out.');
     } finally {
