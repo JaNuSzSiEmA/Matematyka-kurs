@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import AdminGate from '../../../components/admin/AdminGate';
-import { supabase } from '../../../lib/admin';
+import AdminGate from '../../../../../components/admin/AdminGate';
+import { supabase } from '../../../../../lib/admin';
 
 export default function AdminIslandItems() {
   const router = useRouter();
