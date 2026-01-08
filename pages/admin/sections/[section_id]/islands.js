@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+<<<<<<< HEAD
 import AdminGate from '../../../components/admin/AdminGate';
 import { supabase } from '../../../lib/admin';
+=======
+import AdminGate from '../../../../../components/admin/AdminGate';
+import { supabase } from '../../../../../lib/admin';
+>>>>>>> a6cd67668199735e74956b719c9a0ebc3029f5ae
 
 export default function AdminSectionIslands() {
   const router = useRouter();
