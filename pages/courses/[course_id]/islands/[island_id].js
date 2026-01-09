@@ -49,9 +49,6 @@ function getAbcdOptionsFromAnswerKey(answerKey) {
 }
 
 function CheckIcon({ done, size = 18, className = '' }) {
-  // simple inline SVG to avoid extra deps
-  // done=false -> gray outline circle + check
-  // done=true  -> green filled circle + white check
   if (done) {
     return (
       <svg width={size} height={size} viewBox="0 0 20 20" className={className} aria-hidden="true">
@@ -102,6 +99,10 @@ export default function IslandPage() {
   const [pendingFinish, setPendingFinish] = useState(null);
   const [testRules, setTestRules] = useState({ test_questions_count: 6, pass_percent: 60 });
 
+  // NEW: track section link info for the back button
+  const [sectionSlug, setSectionSlug] = useState(null);
+  const [sectionTitle, setSectionTitle] = useState(null);
+
   const [showHintsByExerciseId, setShowHintsByExerciseId] = useState({});
   const [showExplanationByExerciseId, setShowExplanationByExerciseId] = useState({});
 
@@ -142,7 +143,6 @@ export default function IslandPage() {
       .in('island_item_id', itemIds);
 
     if (error) {
-      // don't hard fail the page for progress; just show msg
       setMsg((prev) => (prev ? prev + ' ' : '') + `Progress load failed: ${error.message}`);
       setProgressByItemId({});
       return;
@@ -198,6 +198,8 @@ export default function IslandPage() {
       setShowExplanationByExerciseId({});
       setProgressByItemId({});
       setUserId(null);
+      setSectionSlug(null);
+      setSectionTitle(null);
 
       const {
         data: { session },
@@ -229,7 +231,7 @@ export default function IslandPage() {
 
       const { data: secRules, error: secRulesErr } = await supabase
         .from('sections')
-        .select('id, test_questions_count, pass_percent')
+        .select('id, slug, title, test_questions_count, pass_percent')
         .eq('id', isl.section_id)
         .single();
 
@@ -238,6 +240,8 @@ export default function IslandPage() {
           test_questions_count: Number(secRules.test_questions_count || 6),
           pass_percent: Number(secRules.pass_percent || 60),
         });
+        setSectionSlug(secRules.slug || null);
+        setSectionTitle(secRules.title || null);
       }
 
       const { data: its, error: itsErr } = await supabase
@@ -295,7 +299,6 @@ export default function IslandPage() {
 
       setItems(hydratedItems);
 
-      // load progress AFTER we have island_items ids
       await loadProgressForItems(session.user.id, hydratedItems);
 
       setLoading(false);
@@ -343,7 +346,6 @@ export default function IslandPage() {
           [exerciseId]: { is_correct: json.is_correct, points_awarded: json.points_awarded },
         }));
 
-        // PROGRESS: mark completed ONLY if correct (non-test flow)
         if (json.is_correct) {
           const islandItem = items.find((it) => it.item_type === 'exercise' && it.exercise_id === exerciseId);
           const pts = islandItem?.exercise?.points_max ?? json.points_awarded ?? 0;
@@ -410,8 +412,6 @@ export default function IslandPage() {
 
       setTestResult(json);
 
-      // PROGRESS: for test islands, mark completed items that are correct
-      // expected json.perQuestion: [{ exercise_id, is_correct, points_awarded, answered, ...}]
       if (Array.isArray(json.perQuestion) && session.user?.id) {
         for (const q of json.perQuestion) {
           if (!q?.is_correct) continue;
@@ -420,7 +420,6 @@ export default function IslandPage() {
 
           const pts = islandItem.exercise?.points_max ?? q.points_awarded ?? 0;
 
-          // store last answer if present in payload
           await upsertCompletionForIslandItem({
             sessionUserId: session.user.id,
             islandItemId: islandItem.id,
@@ -461,13 +460,16 @@ export default function IslandPage() {
     reallySubmitTest();
   }
 
+  const backHref =
+    sectionSlug && course_id ? `/courses/${course_id}/sections/${sectionSlug}` : `/courses/${course_id}`;
+
   return (
     <div className="min-h-screen bg-white">
       <div className="mx-auto max-w-3xl p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <Link href="/dashboard" className="text-sm font-semibold text-gray-700 underline">
-              ← Panel
+            <Link href={backHref} className="text-sm font-semibold text-gray-700 underline">
+              ← {sectionTitle ? sectionTitle : 'Panel'}
             </Link>
             <h1 className="mt-2 text-2xl font-bold text-gray-900">
               {isTest ? 'Test' : 'Wyspa'}: {island?.title}
@@ -480,7 +482,6 @@ export default function IslandPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Island completion check (requested) */}
             {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
 
             <span
@@ -501,7 +502,7 @@ export default function IslandPage() {
         ) : null}
 
         {msg ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
         ) : null}
 
         <div className="mt-6 space-y-4">
@@ -561,7 +562,6 @@ export default function IslandPage() {
                 <div key={it.id} className={`rounded-2xl border p-4 ${cardStyle}`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      {/* per-item completion check (requested) */}
                       {!isTest ? <CheckIcon done={itemCompleted} size={20} className="mt-0.5" /> : null}
 
                       <div>
@@ -769,7 +769,7 @@ export default function IslandPage() {
             </div>
 
             {!testResult && pendingFinish ? (
-              <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+              <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
                 <div className="font-semibold">Nie uzupełniłeś wszystkich odpowiedzi.</div>
                 <div className="mt-1">
                   Uzupełniono {pendingFinish.filled}/{testCount}. Brakujące zostaną policzone jako błędne.
