@@ -1,51 +1,31 @@
-import { useState } from 'react';
-import { useRouter } from 'next/router';
 import { createClient } from '@supabase/supabase-js';
+import { useRouter } from 'next/router';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function SignOutButton({ label = 'Wyloguj' }) {
+export default function SignOutButton({ className = '' }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
 
-  async function handleSignOut() {
-    setLoading(true);
+  async function signOut() {
     try {
-      // Sign out on the client
       await supabase.auth.signOut();
-      // Clear server cookies so middleware treats you as logged out
-      try {
-        await fetch('/api/auth/callback', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({ event: 'SIGNED_OUT' }),
-        });
-      } catch {}
-      // Go to login
-      router.replace('/login');
-    } finally {
-      setLoading(false);
+      router.push('/login');
+    } catch (e) {
+      console.error('Sign out failed', e);
+      router.push('/login');
     }
   }
 
   return (
     <button
-      onClick={handleSignOut}
-      disabled={loading}
-      style={{
-        padding: '10px 12px',
-        borderRadius: 10,
-        border: '1px solid #111827',
-        background: '#111827',
-        color: 'white',
-        cursor: 'pointer',
-      }}
+      type="button"
+      onClick={signOut}
+      className={`w-full rounded-none border border-black bg-white px-3 py-2 text-sm font-semibold text-black transition hover:bg-black hover:text-white ${className}`}
     >
-      {loading ? 'Wylogowywanie…' : label}
+      Wyloguj
     </button>
   );
 }
