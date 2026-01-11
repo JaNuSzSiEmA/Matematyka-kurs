@@ -1,3 +1,4 @@
+/* === Append: dark theme variables & UI surface overrides === */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,3 +6,137 @@
 html, body {
   height: 100%;
 }
+.ui-surface--strong {
+  background-color: #e0e0e0;
+}
+.dashboard-page {
+  background-color: #092722;
+}
+.main-panel-surface {
+  background-color: #f0f0f0;
+}
+.dashboard-card {
+  background-color: #ffffff;
+}
+.spanner-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 70px;            /* outer square size - change if you want smaller/larger */
+  height: 70px;
+  background-color: #ffd900;
+  border-radius: 8px;     /* rounded corners; remove if you want square */
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(2, 6, 23, 0.199); /* subtle lift, optional */
+  border-bottom: 205px;
+}
+
+.theme-dark {
+  --dashboard-page-text: #e7e6e6;
+}
+/* Dark theme when .theme-dark class applied on <html> (documentElement) */
+.theme-dark { /* General UI surface styles */
+  --ui-bg: #0b0b0b;           /* sidebar background / button hover fallback color */
+  --ui-strong-bg: #0a0a0a;
+  --ui-border: rgba(255, 255, 255, 0.04);
+  --ui-text: #e7e6e6;
+}
+.theme-dark { /* Dashboard card styles */
+  --dashboard-card-bg: #0b0b0b;           /* sidebar background / button hover fallback color */
+  --dashboard-card-strong-bg: #0a0a0a;
+  --dashboard-card-text: #949494;
+}
+.theme-dark {  /* Open Path Box styles */
+  --open-path-box-bg: #092722;           /* sidebar background / button hover fallback color */
+  --open-path-box-strong-bg: #0a0a0a;
+  --open-path-box-border: rgba(153, 153, 153, 0.425);
+  --open-path-box-text: #e7e7e7;
+}
+.theme-dark { /* Main Panel Surface styles */
+  --main-panel-surface-bg: #0e0e0e;           /* sidebar background / button hover fallback color */
+  --main-panel-surface-strong-bg: #0a0a0a;
+  --main-panel-surface-border: rgba(255, 255, 255, 0.04);
+  --main-panel-surface-text: #949494;
+}
+.theme-dark { /* island surface styles */
+  --island-surface-bg: #0e0e0e;           /* sidebar background / button hover fallback color */
+  --island-surface-strong-bg: #0a0a0a;
+  --island-surface-border: rgba(255, 255, 255, 0.04);
+  --island-surface-text: #949494;
+
+}
+.theme-dark {
+  --island-title-text: #e7e7e7;
+}
+.theme-dark {
+  --section-title-text: #e7e7e7;
+}
+.theme-dark {
+  --check-icon-fill: black;
+}
+.theme-dark {
+  --sidebar-tab-text: #000000;
+}
+/* Apply dark UI background colors to your surfaces (example selectors).
+   If you have .ui-surface class, apply dark variant there too. */
+.theme-dark body {
+  background: linear-gradient(180deg, #071e1a 0%, #04201a 100%); /* deep greenish-black page background */
+  color: var(--ui-text);
+}
+
+/* Example: if your sidebar uses a class or plain aside, make it dark */
+.theme-dark aside,
+.theme-dark .ui-surface,
+.theme-dark .ui-surface--strong {
+  background-color: var(--ui-bg) !important;
+  color: var(--ui-text) !important;
+  border: 1px solid var(--ui-border) !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+}
+.theme-dark .dashboard-card {
+  background-color: var(--dashboard-card-bg) !important;
+  color: var(--dashboard-card-text) !important;
+  border: 1px solid var(--dashboard-card-border) !important;
+  box-shadow: 0 0 5px rgba(46, 46, 46, 0.6);
+}
+.theme-dark .open-path-box {
+  background-color: var(--open-path-box-bg) !important;
+  color: var(--open-path-box-text) !important;
+  border: 1px solid var(--open-path-box-border) !important;
+}
+.theme-dark .main-panel-surface {
+  background-color: var(--main-panel-surface-bg) !important;
+  color: var(--main-panel-surface-text) !important;
+  border: 1px solid var(--main-panel-surface-border) !important;
+}
+.theme-dark .island-surface {
+  background-color: var(--island-surface-bg) !important;
+  color: var(--island-surface-text) !important;
+  border: 1px solid var(--island-surface-border) !important;
+}
+.theme-dark .island-title {
+  color: var(--island-title-text) !important;
+}
+
+.theme-dark .check-icon {
+  stroke: var(--check-icon-fill) !important;
+}
+.theme-dark .dashboard-page {
+  color: var(--dashboard-page-text) !important;
+}
+/* Ensure elevated/active tab in dark theme keeps contrast */
+.theme-dark .sidebar-active {
+  background-color: #064e3b; /* slightly darker green for active tab on dark theme */
+  color: #e6eef6 !important;
+}
+.theme-dark .sidebar-label {
+  color: #e6eef6 !important; /* lighter gray for sidebar labels on dark theme */
+}
+.theme-dark .sidebar-label {
+  color: var(--sidebar-label-text) !important;
+}
+.theme-dark .section-title {
+  color: var(--section-title-text) !important;
+}
+/* If SignOutButton or other components rely on var(--ui-*) you can adjust additional selectors here. */
+
