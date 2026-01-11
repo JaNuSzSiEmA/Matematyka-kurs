@@ -38,7 +38,7 @@ export default function Sidebar() {
 
   function normalizePath(p) {
     if (!p) return '/';
-    const path = p.split('?')[0].split('#')[0].replace(/\/+$/, ''); // remove query/hash and trailing slash
+    const path = p.split('?')[0].split('#')[0].replace(/\/+$/, '');
     return path === '' ? '/' : path;
   }
 
@@ -52,19 +52,18 @@ export default function Sidebar() {
   return (
     <aside
       aria-label="Main navigation"
-      className="fixed left-0 top-0 z-40 h-full w-56 px-3 py-6"
-      style={{ backgroundColor: '#ffffff' }}
+      className="fixed left-0 top-0 z-40 h-full w-56 px-3 py-6 ui-surface ui-surface--strong"
     >
       <div className="flex h-full flex-col justify-between">
         <div>
           <Link href="/" legacyBehavior>
             <a className="flex items-center gap-3 px-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-700 text-white">
-                M
+                LOGO
               </div>
               <div>
-                <div className="text-sm font-semibold text-gray-900">MaturaTesty</div>
-                <div className="text-xs text-gray-500">Nauka & Testy</div>
+                <div className="ui-surface text-sm font-semibold text-gray-900">NAZWA</div>
+                <div className="ui-surface text-xs text-gray-500">NAZWA2</div>
               </div>
             </a>
           </Link>
@@ -76,7 +75,7 @@ export default function Sidebar() {
               return (
                 <Link href={t.href} key={t.key} legacyBehavior>
                   <a
-                    className={`group flex w-full items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg focus:outline-none sidebar-tab ${
+                    className={`group flex w-full items-center gap-3 px-3 py-2 text-m font-medium rounded-lg focus:outline-none sidebar-tab ${
                       active ? 'sidebar-active' : 'sidebar-inactive'
                     }`}
                     aria-current={active ? 'page' : undefined}
@@ -89,34 +88,26 @@ export default function Sidebar() {
           </nav>
         </div>
 
-        <div className="mt-6">
-          <div className="px-2">
-            <div className="mb-2 text-xs font-semibold text-gray-500">Konto</div>
-            <div className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-              <div className="h-8 w-8 rounded-full bg-gray-200" />
-              <div className="flex-1 text-sm">
-                <div className="truncate font-medium text-gray-800">{email ?? '—'}</div>
-                <div className="text-xs text-gray-500">Zalogowany</div>
-              </div>
+        <div className="mt-6 px-2">
+          <div className="mb-2 text-xs font-semibold text-gray-500"></div>
+          <div className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 py-2  pr-5 ui-surface">
+            <div className=" rounded-full ui-surface" />
+            <div className="flex-1 text-sm overflow-hidden">
+              <div className="font-medium text-gray-800 ui-surface">{email ?? '—'}</div>
+              <div className="text-xs text-gray-500">Zalogowany</div>
             </div>
+          </div>
 
-            <div className="mt-3">
-              <SignOutButton className="mt-2 w-full" />
-            </div>
+          <div className="mt-3">
+            <SignOutButton className="mt-2 w-full" />
           </div>
         </div>
       </div>
 
       <style jsx>{`
-        /* Force aside solid white (defensive) */
-        aside {
-          background-color: #ffffff !important;
-        }
-
-        /* base tab styles and enforced default text color so the label never disappears */
         .sidebar-tab {
           position: relative;
-          color: #374151; /* Tailwind text-gray-700 */
+          color: #374151;
           text-decoration: none;
           transition:
             transform 200ms cubic-bezier(.2,.9,.2,1),
@@ -131,7 +122,6 @@ export default function Sidebar() {
         .sidebar-inactive {
           color: #374151;
           background-color: transparent;
-          box-shadow: none;
         }
 
         .sidebar-tab .sidebar-label {
@@ -140,13 +130,13 @@ export default function Sidebar() {
           line-height: 1;
         }
 
-        /* Hover / focus for non-active tabs only: move left+up and cast shadow down-right */
+        /* Hover / focus only for non-active tabs */
         .sidebar-tab:not(.sidebar-active):hover {
           transform: translate(-6px, -4px);
           box-shadow:
             0 10px 18px rgba(0,0,0,0.14),
             8px 6px 16px rgba(0,0,0,0.06);
-          background-color: rgba(255,255,255,0.96);
+          background-color: rgba(255,255,255,0.92);
           color: #111827;
           z-index: 20;
         }
@@ -156,12 +146,11 @@ export default function Sidebar() {
           box-shadow:
             0 10px 18px rgba(0,0,0,0.14),
             8px 6px 16px rgba(0,0,0,0.06);
-          background-color: rgba(255,255,255,0.96);
+          background-color: rgba(255,255,255,0.92);
           color: #111827;
           z-index: 20;
         }
 
-        /* Active tab: keep its elevation/color, and do not change on hover/focus */
         .sidebar-active {
           background-color: #065f46; /* green-800 */
           color: #ffffff !important;
@@ -170,17 +159,6 @@ export default function Sidebar() {
             0 12px 22px rgba(0,0,0,0.16),
             10px 8px 20px rgba(0,0,0,0.08);
           z-index: 20;
-        }
-
-        /* Prevent active tab from changing on hover/focus (defensive) */
-        .sidebar-active:hover,
-        .sidebar-active:focus-visible {
-          transform: translate(-6px, -4px);
-          box-shadow:
-            0 12px 22px rgba(0,0,0,0.16),
-            10px 8px 20px rgba(0,0,0,0.08);
-          background-color: #065f46;
-          color: #ffffff !important;
         }
       `}</style>
     </aside>

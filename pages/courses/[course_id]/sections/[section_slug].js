@@ -15,6 +15,9 @@ function clampPct(x) {
 }
 
 function CheckIcon({ state, size = 20 }) {
+  // Determine dark mode by checking documentElement class (safe on client)
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('theme-dark');
+
   // state: 'none' | 'in_progress' | 'done'
   if (state === 'done') {
     return (
@@ -33,9 +36,11 @@ function CheckIcon({ state, size = 20 }) {
   }
 
   if (state === 'in_progress') {
+    // fill white in light mode, black in dark mode
+    const fillColor = isDark ? '#000000' : '#ffffff';
     return (
       <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
-        <circle cx="10" cy="10" r="9" fill="white" stroke="#86efac" strokeWidth="2" />
+        <circle cx="10" cy="10" r="9" fill={fillColor} stroke="#16a34a" strokeWidth="2" />
         <path
           d="M5.5 10.2l2.6 2.6 6.2-6.2"
           fill="none"
@@ -48,9 +53,11 @@ function CheckIcon({ state, size = 20 }) {
     );
   }
 
+  // 'none' / not started: fill white in light mode, black in dark mode
+  const noneFill = isDark ? '#000000' : '#ffffff';
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
-      <circle cx="10" cy="10" r="9" fill="white" stroke="#d1d5db" strokeWidth="2" />
+      <circle cx="10" cy="10" r="9" fill={noneFill} stroke="#d1d5db" strokeWidth="2" />
       <path
         d="M5.5 10.2l2.6 2.6 6.2-6.2"
         fill="none"
@@ -231,7 +238,7 @@ export default function SectionPathPage() {
 
   if (loading || checkingAccess) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen section-page">
         <div className="mx-auto max-w-3xl p-6 text-sm text-gray-700">Ładowanie…</div>
       </div>
     );
@@ -239,7 +246,7 @@ export default function SectionPathPage() {
 
   if (!hasAccess) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen section-page">
         <div className="mx-auto max-w-3xl p-6">
           <h1 className="text-2xl font-bold text-gray-900">Brak dostępu</h1>
           <p className="mt-2 text-sm text-gray-700">
@@ -259,17 +266,15 @@ export default function SectionPathPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen section-page">
       <div className="mx-auto max-w-3xl p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <Link href="/dashboard" className="text-sm font-semibold text-gray-700 underline">
+            <Link href="/dashboard" className="text-sm section-title font-semibold text-gray-700 ">
               ← Panel
             </Link>
-            <h1 className="mt-2 text-2xl font-bold text-gray-900">{section?.title}</h1>
-            <p className="mt-1 text-sm text-gray-600">
-              Możesz przeskakiwać wyspy. Test można zrobić od razu (nieograniczone podejścia).
-            </p>
+            <h1 className=" text-2xl font-bold section-title text-gray-900 p-3 rounded-xl ">{section?.title}</h1>
+           
           </div>
 
           {section?.is_free ? (
@@ -296,15 +301,13 @@ export default function SectionPathPage() {
 
             const cardBase =
               st.state === 'done'
-                ? 'border-green-200 bg-green-50'
+                ? 'border-green-200 island-surface'
                 : st.state === 'in_progress'
-                  ? 'border-green-200 bg-green-50/50'
-                  : 'border-gray-200 bg-white';
+                ? 'border-green-200 island-surface'
+                : 'border-gray-200 island-surface';
 
             // tests keep indigo theme, but still show check state
-            const finalCardClass = isTest
-              ? 'border-indigo-300 bg-indigo-50'
-              : cardBase;
+            const finalCardClass = isTest ? 'border-indigo-300 island-surface' : cardBase;
 
             return (
               <div key={island.id} className={`flex ${zigZag(idx)}`}>
@@ -321,7 +324,7 @@ export default function SectionPathPage() {
                       <div className="text-xs font-semibold text-gray-500">
                         {isTest ? 'TEST (6 zadań)' : `WYSPA ${island.order_index}`}
                       </div>
-                      <div className="mt-1 text-lg font-bold text-gray-900">{island.title}</div>
+                      <div className="mt-1 text-lg font-bold text-gray-900 island-title ">{island.title}</div>
 
                       {!isTest ? (
                         <div className="mt-1 text-xs text-gray-600">

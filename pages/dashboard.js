@@ -223,41 +223,18 @@ export default function DashboardPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-white">
+    // removed forced white bg so dark page background can show when theme-dark + page-target-dark are present
+    <div className="min-h-screen dashboard-page">
       <div className="mx-auto max-w-4xl p-6">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Panel ucznia</h1>
-            <div className="mt-1 flex items-center gap-2 text-sm text-gray-600">
-              <span>Zalogowany: {userEmail || '—'}</span>
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="rounded-xl border border-gray-900 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900 hover:bg-gray-50"
-              >
-                Wyloguj
-              </button>
-            </div>
-          </div>
+        
 
-          <div className="flex gap-2">
-            <Link
-              href={`/courses/${courseId}`}
-              className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Kurs (sprawdź dostęp)
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-6 rounded-2xl border border-gray-200 p-4">
-          <h2 className="text-lg font-semibold text-gray-900">Działy</h2>
-          <p className="mt-1 text-sm text-gray-600">
-            Darmowy dział: <b>Planimetria</b>. Możesz przeskakiwać wyspy i robić test od razu.
-          </p>
+        {/* main panel uses ui-surface so dark-theme overrides can change its appearance */}
+        <div className="mt-6 rounded-2xl border p-4 main-panel-surface">
+          <h2 className="text-lg font-semibold dashboard-title">Działy</h2>
+          
 
           {loading ? (
-            <div className="mt-4 text-sm text-gray-700">Ładowanie…</div>
+            <div className="mt-4 text-sm dashboard-muted">Ładowanie…</div>
           ) : msg ? (
             <div className="mt-4 text-sm text-red-700">{msg}</div>
           ) : (
@@ -265,24 +242,25 @@ export default function DashboardPage() {
               {sectionsWithStats.map((s) => {
                 const state = s.stats.state;
 
-                const cardCls =
+                // new named classes for borders/states; ui-surface still controls background
+                                const cardBorderClass =
                   state === 'done'
-                    ? 'border-green-200 bg-green-50'
+                    ? 'border-green-200'
                     : state === 'in_progress'
-                      ? 'border-green-200 bg-green-50/50'
-                      : 'border-gray-200 bg-white';
+                      ? 'border-green-200'
+                      : 'border-gray-200';
 
                 return (
-                  <li key={s.id} className={`rounded-2xl border p-4 ${cardCls}`}>
+                  <li key={s.id} className={`rounded-2xl border p-4 dashboard-card ${cardBorderClass}`}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-base font-semibold text-gray-900">{s.title}</div>
-                        <div className="text-xs text-gray-600">/{s.slug}</div>
+                        <div className="text-base font-semibold dashboard-title">{s.title}</div>
+                        <div className="text-xs dashboard-subtext">/{s.slug}</div>
 
-                        <div className="mt-2 text-xs text-gray-700">
+                        <div className="mt-2 text-xs dashboard-subtext">
                           Postęp: <b>{s.stats.percent}%</b>
                           {s.stats.totalIslands ? (
-                            <span className="ml-2 text-gray-500">
+                            <span className="ml-2 dashboard-subtext">
                               ({s.stats.completedIslands}/{s.stats.totalIslands} wysp)
                             </span>
                           ) : null}
@@ -318,7 +296,7 @@ export default function DashboardPage() {
                     <div className="mt-3">
                       <Link
                         href={`/courses/${courseId}/sections/${s.slug}`}
-                        className="inline-block rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900"
+                        className="inline-block rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900 open-path-box"
                       >
                         Otwórz ścieżkę
                       </Link>
