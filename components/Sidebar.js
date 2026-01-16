@@ -94,12 +94,20 @@ export default function Sidebar() {
             <div className=" rounded-full ui-surface" />
             <div className="flex-1 text-sm overflow-hidden">
               <div className="font-medium text-gray-800 ui-surface">{email ?? '—'}</div>
-              <div className="text-xs text-gray-500">Zalogowany</div>
+              <div className="text-xs text-gray-500">{email ? 'Zalogowany' : 'Niezalogowany'}</div>
             </div>
           </div>
 
           <div className="mt-3">
-            <SignOutButton className="mt-2 w-full" />
+            {email ? (
+              <SignOutButton className="mt-2 w-full" />
+            ) : (
+              <SignOutButton
+                className="mt-2 w-full"
+                label="Zaloguj"
+                onClick={() => router.push('/login')}
+              />
+            )}
           </div>
         </div>
       </div>

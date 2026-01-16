@@ -4,24 +4,52 @@ export function middleware(req) {
   const url = req.nextUrl.clone();
   const { pathname } = url;
 
-  // Consider user logged in if the auth cookie is present
-  const isLoggedIn = Boolean(req.cookies.get('sb-access-token')?.value);
+  // Allow internal/asset and auth callback routes always
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/static') ||
+    pathname === '/favicon.ico' ||
+    pathname.startsWith('/api/auth')
+  ) {
+    return NextResponse.next();
+  }
 
-  // Root: send to login or dashboard
+  // Consider user logged in if common Supabase auth cookies are present.
+  const isLoggedIn = Boolean(
+    req.cookies.get('sb-access-token')?.value ||
+    req.cookies.get('__supabase_auth_token')?.value ||
+    req.cookies.get('supabase-auth-token')?.value
+  );
+
+  // Root: send everyone to the public dashboard
   if (pathname === '/') {
-    url.pathname = isLoggedIn ? '/dashboard' : '/login';
+    url.pathname = '/dashboard';
     return NextResponse.redirect(url);
   }
 
-  // IMPORTANT: always allow /login (no auto-redirect to /dashboard)
+  // Always allow /login
   if (pathname === '/login') {
     return NextResponse.next();
   }
 
-  // Protect these paths when not logged in
-  const protectedPrefixes = ['/dashboard', '/admin'];
-  const isProtected = protectedPrefixes.some((p) => pathname.startsWith(p));
+  // PUBLIC: allow viewing dashboard and course pages without login
+  if (pathname.startsWith('/dashboard') || pathname.startsWith('/courses')) {
+    return NextResponse.next();
+  }
+
+  // Protected prefixes (these require login)
+  const protectedPrefixes = [
+    '/admin',
+    '/options',
+    '/mathmare',
+    '/generator',
+    '/ai',
+    '/repetytorium',
+  ];
+  const isProtected = protectedPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
+
   if (isProtected && !isLoggedIn) {
+    // Redirect to login, preserve original path so we can navigate back after auth
     url.pathname = '/login';
     url.searchParams.set('redirectedFrom', pathname);
     return NextResponse.redirect(url);
@@ -31,5 +59,16 @@ export function middleware(req) {
 }
 
 export const config = {
-  matcher: ['/', '/login', '/dashboard/:path*', '/admin/:path*'],
+  matcher: [
+    '/',
+    '/login',
+    '/admin/:path*',
+    '/options/:path*',
+    '/mathmare/:path*',
+    '/generator/:path*',
+    '/ai/:path*',
+    '/repetytorium/:path*',
+    '/courses/:path*',
+    '/dashboard/:path*',
+  ],
 };

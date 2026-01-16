@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { useRouter } from 'next/router';
 
@@ -6,31 +7,70 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default function SignOutButton({ className = '' }) {
+export default function SignOutButton({ className = '', onClick, label = 'Wyloguj' }) {
   const router = useRouter();
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
-  async function signOut() {
+  // If a custom onClick is provided (e.g. navigate to login), use it.
+  // Otherwise perform the default sign-out flow.
+  async function handleClick() {
+    if (onClick) {
+      try {
+        onClick();
+      } catch (e) {
+        console.error('SignOutButton onClick failed', e);
+      }
+      return;
+    }
+
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+
     try {
-      await supabase.auth.signOut();
-      router.push('/login');
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Supabase signOut error:', error);
+      }
+
+      // Notify server-side callback (best effort)
+      try {
+        await fetch('/api/auth/callback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ event: 'SIGNED_OUT' }),
+        });
+      } catch (e) {
+        console.error('auth callback failed:', e);
+      }
     } catch (e) {
       console.error('Sign out failed', e);
-      router.push('/login');
+    } finally {
+      // Force a full navigation so server/client state is refreshed.
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login');
+      } else {
+        router.replace('/login');
+      }
     }
   }
+
+  const isBusy = isSigningOut && !onClick;
 
   return (
     <button
       type="button"
-      onClick={signOut}
-      aria-label="Wyloguj"
+      onClick={handleClick}
+      aria-label={label}
+      aria-busy={isBusy}
+      disabled={isBusy}
       className={`signout-btn ${className}`}
     >
       <span className="inner">
         <span className="icon-wrap">
           <img src="/logout-icon.png" alt="" className="icon" />
         </span>
-        <span className="label">Wyloguj</span>
+        <span className="label">{isBusy ? 'Trwa wylogowywanie…' : label}</span>
       </span>
 
       <style jsx>{`
@@ -49,8 +89,14 @@ export default function SignOutButton({ className = '' }) {
           position: relative;
           overflow: visible;
           border-radius: 0;
-          transition: background-color 00ms ease, color 00ms ease, border-radius 00ms ease;
+          transition: background-color 160ms ease, color 160ms ease, border-radius 160ms ease, opacity 160ms ease, transform 160ms ease;
           text-align: left;
+        }
+
+        .signout-btn:disabled {
+          cursor: default;
+          opacity: 0.6;
+          transform: none;
         }
 
         .signout-btn:focus {
@@ -99,12 +145,9 @@ export default function SignOutButton({ className = '' }) {
           pointer-events: none;
         }
 
-      
-
         .signout-btn:hover .icon,
         .signout-btn:focus-visible .icon {
           transform: translateX(0);
-          
         }
 
         .signout-btn:hover .label,
@@ -117,28 +160,16 @@ export default function SignOutButton({ className = '' }) {
           color: inherit;
         }
 
-        /**
-         * Dark theme overrides (when .theme-dark is applied on <html>)
-         *
-         * Behavior:
-         * - default (unhovered): button blends with dark sidebar background, icon is white (via filter) and label is white.
-         * - hover: button BG becomes the same color as the dark sidebar background (use var(--ui-bg)); text/icon adjust for contrast.
-         *
-         * NOTE: ensure your globals.css defines --ui-bg and --ui-text under .theme-dark (see snippet below).
-         */
         :global(.theme-dark) .signout-btn {
           background: var(--ui-bg, #0b0b0b);
           color: var(--ui-text, #e6eef6);
           border-radius: 8px;
         }
 
-        /* Unhovered icon is white in dark theme */
         :global(.theme-dark) .signout-btn .icon {
           filter: invert(1) contrast(120%) brightness(1.05);
         }
 
-        /* Dark-theme hover: use the sidebar's dark background color for the button background.
-           That keeps the button consistent with the dark sidebar look. */
         :global(.theme-dark) .signout-btn:hover,
         :global(.theme-dark) .signout-btn:focus-visible {
           background: var(--ui-bg, #0b0b0b);
@@ -146,15 +177,12 @@ export default function SignOutButton({ className = '' }) {
           border-radius: 10px;
         }
 
-        /* On hover in dark theme ensure icon is visible (keep it white or slightly adjusted) */
         :global(.theme-dark) .signout-btn:hover .icon,
         :global(.theme-dark) .signout-btn:focus-visible .icon {
           transform: translateX(0);
-          /* keep icon light so it contrasts with the dark button background */
           filter: invert(1) contrast(120%) brightness(1.05);
         }
 
-        /* Label color follows parent */
         :global(.theme-dark) .signout-btn .label {
           color: inherit;
         }

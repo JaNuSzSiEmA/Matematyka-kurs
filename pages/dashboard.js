@@ -14,17 +14,48 @@ function clampPct(x) {
   return Math.max(0, Math.min(100, n));
 }
 
+// Format percent for display: at most 2 fraction digits, no long floats
+function formatPercent(value) {
+  const n = Number(value || 0);
+  if (Number.isNaN(n)) return '0';
+  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
 function CheckIcon({ state, size = 20 }) {
+  // Determine dark mode by checking documentElement class (safe on client)
+  const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('theme-dark');
+
+  // scale stroke width with size so it looks consistent at different sizes
+  const circleStrokeW = Math.max(1, Math.round(size / 10)); // stroke for circle border
+  const checkStrokeW = Math.max(1, Math.round(size / 9)); // stroke for the check path
+
   // state: 'none' | 'in_progress' | 'done'
   if (state === 'done') {
+    const circleStrokeColor = isDark ? '#000000' : 'transparent'; // black border only in dark mode
+    const checkStrokeColor = isDark ? '#000000' : '#ffffff'; // black check in dark mode, white in light mode
+
     return (
-      <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
-        <circle cx="10" cy="10" r="9" fill="#16a34a" />
+      <svg
+        className="check-icon"
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        aria-hidden="true"
+      >
+        {/* green fill; stroke only in dark mode */}
+        <circle
+          cx="10"
+          cy="10"
+          r="9"
+          fill="#16a34a"
+          stroke={circleStrokeColor}
+          strokeWidth={circleStrokeW}
+        />
         <path
           d="M5.5 10.2l2.6 2.6 6.2-6.2"
           fill="none"
-          stroke="white"
-          strokeWidth="2"
+          stroke={checkStrokeColor}
+          strokeWidth={checkStrokeW}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
@@ -33,9 +64,11 @@ function CheckIcon({ state, size = 20 }) {
   }
 
   if (state === 'in_progress') {
+    // fill white in light mode, black in dark mode
+    const fillColor = isDark ? '#000000' : '#ffffff';
     return (
       <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
-        <circle cx="10" cy="10" r="9" fill="white" stroke="#86efac" strokeWidth="2" />
+        <circle cx="10" cy="10" r="9" fill={fillColor} stroke="#16a34a" strokeWidth="2" />
         <path
           d="M5.5 10.2l2.6 2.6 6.2-6.2"
           fill="none"
@@ -48,7 +81,21 @@ function CheckIcon({ state, size = 20 }) {
     );
   }
 
-  return null; // for "not started" you wanted no message; we also hide icon here
+  // 'none' / not started: fill white in light mode, black in dark mode
+  const noneFill = isDark ? '#000000' : '#ffffff';
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="10" cy="10" r="9" fill={noneFill} stroke="#d1d5db" strokeWidth="2" />
+      <path
+        d="M5.5 10.2l2.6 2.6 6.2-6.2"
+        fill="none"
+        stroke="#d1d5db"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 export default function DashboardPage() {
@@ -96,12 +143,10 @@ export default function DashboardPage() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
 
-      setUserEmail(session.user?.email || null);
+      // Do NOT force-redirect anonymous users here:
+      // allow viewing the dashboard (course index) even when not logged in.
+      setUserEmail(session?.user?.email ?? null);
 
       const { data, error } = await supabase
         .from('sections')
@@ -119,11 +164,10 @@ export default function DashboardPage() {
       const secs = data || [];
       setSections(secs);
 
-      // ---- compute progress per section ----
+      // load islands for these sections (we need totalIslands even for anonymous users)
       if (secs.length > 0) {
         const secIds = secs.map((s) => s.id);
 
-        // 1) load islands for these sections
         const { data: islRows, error: islErr } = await supabase
           .from('islands')
           .select('id, section_id, type, is_active')
@@ -139,16 +183,20 @@ export default function DashboardPage() {
         const islands = (islRows || []).filter((i) => i.type !== 'test'); // sections progress based on normal islands
         const islandIds = islands.map((i) => i.id);
 
-        // if no islands, mark 0%
-        if (islandIds.length === 0) {
+        // If user is NOT logged in, we only show totals (no personal progress)
+        if (!session) {
           const sStats = {};
-          for (const s of secs) sStats[s.id] = { state: 'none', completedIslands: 0, totalIslands: 0, percent: 0 };
+          for (const s of secs) {
+            const islInSection = islands.filter((i) => i.section_id === s.id);
+            const totalIslands = islInSection.length;
+            sStats[s.id] = { state: 'none', completedIslands: 0, totalIslands, percent: 0 };
+          }
           setSectionStats(sStats);
           setLoading(false);
           return;
         }
 
-        // 2) load exercise items for these islands
+        // Logged-in user: load exercise items and progress as before
         const { data: itemRows, error: itemErr } = await supabase
           .from('island_items')
           .select('id, island_id, item_type')
@@ -163,7 +211,7 @@ export default function DashboardPage() {
         const exerciseItems = (itemRows || []).filter((it) => it.item_type === 'exercise');
         const exerciseItemIds = exerciseItems.map((it) => it.id);
 
-        // 3) load progress for these island_item ids
+        // 3) load progress for these island_item ids for current user
         let prog = [];
         if (exerciseItemIds.length > 0) {
           const { data: progRows, error: progErr } = await supabase
@@ -226,81 +274,107 @@ export default function DashboardPage() {
     // removed forced white bg so dark page background can show when theme-dark + page-target-dark are present
     <div className="min-h-screen dashboard-page">
       <div className="mx-auto max-w-4xl p-6">
-        
-
         {/* main panel uses ui-surface so dark-theme overrides can change its appearance */}
         <div className="mt-6 rounded-2xl border p-4 main-panel-surface">
           <h2 className="text-lg font-semibold dashboard-title">Działy</h2>
-          
+
+          {/* Show banner when anonymous to explain progress won't be saved + quick login */}
+          {!userEmail ? (
+            <div className="mt-3 mb-3 rounded-lg border border-yellow-300 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
+              Jesteś niezalogowany — możesz przeglądać kurs, ale postęp nie zostanie zapisany.
+              <button
+                onClick={() => router.push(`/login?redirectedFrom=/dashboard`)}
+                className="ml-3 inline-block underline font-semibold"
+              >
+                Zaloguj się
+              </button>
+            </div>
+          ) : null}
 
           {loading ? (
             <div className="mt-4 text-sm dashboard-muted">Ładowanie…</div>
           ) : msg ? (
             <div className="mt-4 text-sm text-red-700">{msg}</div>
           ) : (
-            <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 items-stretch">
               {sectionsWithStats.map((s) => {
                 const state = s.stats.state;
 
-                // new named classes for borders/states; ui-surface still controls background
-                                const cardBorderClass =
-                  state === 'done'
-                    ? 'border-green-200'
-                    : state === 'in_progress'
-                      ? 'border-green-200'
-                      : 'border-gray-200';
+                // state-based modifier class (uses CSS variables in globals.css)
+                const stateClass = `dashboard-card--${state || 'none'}`;
+
+                const href = `/courses/${courseId}/sections/${s.slug}`;
+                const ariaLabel = `Otwórz ścieżkę ${s.title}`;
 
                 return (
-                  <li key={s.id} className={`rounded-2xl border p-4 dashboard-card ${cardBorderClass}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-base font-semibold dashboard-title">{s.title}</div>
-                        <div className="text-xs dashboard-subtext">/{s.slug}</div>
+                  <li key={s.id} className="h-full">
+                    <Link
+                      href={href}
+                      aria-label={ariaLabel}
+                      className={`block rounded-2xl border p-4 dashboard-card ${stateClass} cursor-pointer transform transition duration-150 ease-out hover:-translate-y-1 hover:shadow-lg active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-400 h-full flex flex-col`}
+                    >
+                      <div className="flex-1 flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <div className="text-base font-semibold dashboard-title">{s.title}</div>
+                          <div className="text-xs dashboard-subtext">/{s.slug}</div>
 
-                        <div className="mt-2 text-xs dashboard-subtext">
-                          Postęp: <b>{s.stats.percent}%</b>
-                          {s.stats.totalIslands ? (
-                            <span className="ml-2 dashboard-subtext">
-                              ({s.stats.completedIslands}/{s.stats.totalIslands} wysp)
+                          {/* Progress bar (replaces numeric-only Postęp) */}
+                          <div className="mt-3">
+                            <div className="text-xs dashboard-subtext mb-1">Postęp</div>
+
+                            {/* bar background uses CSS var */}
+                            <div className="relative w-full h-3 rounded-full progress-bar-bg overflow-hidden">
+                              {/* filled portion uses CSS var; width reflects percent */}
+                              <div
+                                className="absolute left-0 top-0 h-full rounded-full progress-bar-fill"
+                                style={{ width: `${s.stats.percent}%` }}
+                                role="progressbar"
+                                aria-valuenow={s.stats.percent}
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                              />
+                            </div>
+
+                            {/* footer row: islands count + percent text */}
+                            {s.stats.totalIslands ? (
+                              <div className="mt-2 text-xs dashboard-subtext flex justify-between">
+                                <span>{s.stats.completedIslands}/{s.stats.totalIslands} wysp</span>
+                                <span><b>{formatPercent(s.stats.percent)}%</b></span>
+                              </div>
+                            ) : (
+                              <div className="mt-2 text-xs dashboard-subtext">
+                                <b>{formatPercent(s.stats.percent)}%</b>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2 ml-4">
+                          {s.is_free ? (
+                            <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                              DARMOWE
                             </span>
+                          ) : (
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800">
+                              PŁATNE
+                            </span>
+                          )}
+
+                          {/* requested labels + check visuals */}
+                          {state === 'in_progress' ? (
+                            <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
+                              <CheckIcon state="in_progress" size={18} />
+                              W trakcie
+                            </div>
+                          ) : state === 'done' ? (
+                            <div className="flex items-center gap-2 text-xs dashboard-card-state-done font-semibold text-green-800">
+                              <CheckIcon state="done" size={18} />
+                              Ukończone
+                            </div>
                           ) : null}
                         </div>
                       </div>
-
-                      <div className="flex flex-col items-end gap-2">
-                        {s.is_free ? (
-                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-                            DARMOWE
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800">
-                            PŁATNE
-                          </span>
-                        )}
-
-                        {/* requested labels + check visuals */}
-                        {state === 'in_progress' ? (
-                          <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
-                            <CheckIcon state="in_progress" size={18} />
-                            W trakcie
-                          </div>
-                        ) : state === 'done' ? (
-                          <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
-                            <CheckIcon state="done" size={18} />
-                            Ukończone
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="mt-3">
-                      <Link
-                        href={`/courses/${courseId}/sections/${s.slug}`}
-                        className="inline-block rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900 open-path-box"
-                      >
-                        Otwórz ścieżkę
-                      </Link>
-                    </div>
+                    </Link>
                   </li>
                 );
               })}

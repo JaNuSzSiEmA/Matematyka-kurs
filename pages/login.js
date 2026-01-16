@@ -24,11 +24,13 @@ export default function LoginPage() {
 
   // Robust redirect helper: send tokens to server, then navigate
   async function syncAndRedirect(session) {
+    // If session provided (from Supabase) send tokens to server-side callback
     try {
       const tokens = session
         ? { access_token: session.access_token, refresh_token: session.refresh_token }
         : null;
       if (tokens?.access_token && tokens?.refresh_token) {
+        // Wait for server callback to finish so server-side cookies are set
         await fetch('/api/auth/callback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -36,8 +38,9 @@ export default function LoginPage() {
           body: JSON.stringify({ event: 'SIGNED_IN', session: tokens }),
         });
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      // ignore but log (optional)
+      // console.warn('syncAndRedirect: callback failed', e);
     }
 
     const redirectedFrom = router.query.redirectedFrom;
@@ -46,20 +49,25 @@ export default function LoginPage() {
         ? redirectedFrom
         : '/dashboard';
 
-    // Try client-side navigation; hard-fallback in case it stalls
+    // Force a full-page navigation so server-rendered pages see the new session/cookies.
+    // Use replace to avoid leaving the login page in history.
+    if (typeof window !== 'undefined') {
+      window.location.replace(dest);
+      return;
+    }
+
+    // fallback to client router if window isn't available
     try {
       await router.replace(dest);
-      setTimeout(() => {
-        if (typeof window !== 'undefined' && window.location.pathname !== dest) {
-          window.location.assign(dest);
-        }
-      }, 300);
     } catch {
-      if (typeof window !== 'undefined') window.location.assign(dest);
+      // ignore
     }
   }
 
   useEffect(() => {
+    let subscription = null;
+
+    // Try to get current session immediately
     supabase.auth.getSession().then(({ data }) => {
       const s = data?.session || null;
       setSessionEmail(s?.user?.email ?? null);
@@ -69,7 +77,8 @@ export default function LoginPage() {
       }
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen to auth changes and react (e.g., magic-link, social login)
+    const { data: subData } = supabase.auth.onAuthStateChange((_event, session) => {
       setSessionEmail(session?.user?.email ?? null);
       if (session && !syncedRef.current) {
         syncedRef.current = true;
@@ -77,7 +86,16 @@ export default function LoginPage() {
       }
     });
 
-    return () => sub.subscription.unsubscribe();
+    // unsubscribe safely when component unmounts
+    subscription = subData?.subscription ?? null;
+    return () => {
+      try {
+        subscription?.unsubscribe();
+      } catch (e) {
+        // ignore
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.query.redirectedFrom]);
 
   async function signInWithPassword(e) {
@@ -90,7 +108,8 @@ export default function LoginPage() {
         setMsg('Error: ' + error.message);
       } else {
         setMsg('Signed in! Redirecting…');
-        await syncAndRedirect(data.session);
+        // data.session may be null (depends on provider/config), but syncAndRedirect handles null
+        await syncAndRedirect(data?.session ?? null);
       }
     } finally {
       setLoading(false);

@@ -3,6 +3,52 @@
 @tailwind components;
 @tailwind utilities;
 
+/* -------------------------
+   Theme + state variables
+   -------------------------
+   Add lightweight CSS variable system so "theme" and "state"
+   don't fight each other. Theme sets defaults and dark overrides,
+   state modifier classes only change variables (no direct bg rules).
+*/
+:root {
+  /* UI surfaces (light mode defaults) */
+  --ui-bg: #ffffff;
+  --ui-strong-bg: #f7f7f7;
+  --ui-border: rgba(15, 23, 42, 0.06);
+  --ui-text: #06121a;
+
+  /* Dashboard / card defaults */
+  --dashboard-card-bg: #ffffff;
+  --dashboard-card-border: #e5e7eb; /* gray-200 */
+  --dashboard-card-text: #06121a;
+
+  /* State-specific vars (light) */
+  --dashboard-card-done-bg: #dcfce7; /* light green surface */
+  --dashboard-card-done-border: #16a34a; /* green */
+  --dashboard-card-done-text: #064e3b; /* default done text in light mode */
+
+  --dashboard-card-inprogress-bg: #ffffff;
+  --dashboard-card-inprogress-border: #86efac;
+
+  /* Progress bar defaults */
+  --progress-bg: #f3f4f6;   /* light gray background for bar in light mode */
+  --progress-fill: #16a34a; /* default filled color (green) */
+
+  /* Open path box / main panel defaults (keep current semantics) */
+  --open-path-box-bg: #ffffff;
+  --open-path-box-border: rgba(0,0,0,0.06);
+  --open-path-box-text: #06121a;
+
+  --main-panel-surface-bg: #f0f0f0;
+  --main-panel-surface-border: rgba(0,0,0,0.06);
+  --main-panel-surface-text: #06121a;
+
+  /* check icon fallback */
+  --check-icon-fill: #ffffff;
+}
+
+/* === Existing content (kept as provided) === */
+
 html, body {
   height: 100%;
 }
@@ -15,9 +61,7 @@ html, body {
 .main-panel-surface {
   background-color: #f0f0f0;
 }
-.dashboard-card {
-  background-color: #ffffff;
-}
+
 .spanner-icon {
   display: inline-flex;
   align-items: center;
@@ -30,6 +74,55 @@ html, body {
   box-shadow: 0 2px 8px rgba(2, 6, 23, 0.199); /* subtle lift, optional */
   border-bottom: 205px;
 }
+
+/* -------------------------
+   Dashboard card base + state modifiers
+   ------------------------- */
+/* Base card uses variables so theme/state can control appearance */
+.dashboard-card {
+  background-color: var(--dashboard-card-bg);
+  color: var(--dashboard-card-text);
+  border-color: var(--dashboard-card-border);
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+/* State modifier classes only change variables (no direct bg) */
+.dashboard-card--done {
+  /* pick appropriate variable so theme dark/light can override looks */
+  --dashboard-card-bg: var(--dashboard-card-done-bg);
+  --dashboard-card-border: var(--dashboard-card-done-border);
+
+  /* use a variable for the text color; !important to override theme-wide rule when needed */
+  color: var(--dashboard-card-done-text) !important;
+}
+/* Ensure 'done' cards keep their done text color in dark mode */
+.theme-dark .dashboard-card.dashboard-card--done {
+  color: var(--dashboard-card-done-text) !important;
+}
+
+.dashboard-card--in_progress {
+  --dashboard-card-bg: var(--dashboard-card-inprogress-bg);
+  --dashboard-card-border: var(--dashboard-card-inprogress-border);
+}
+
+.dashboard-card--none {
+  /* keep defaults */
+}
+
+/* -------------------------
+   Progress bar helper classes
+   ------------------------- */
+.progress-bar-bg {
+  background-color: var(--progress-bg);
+}
+.progress-bar-fill {
+  background-color: var(--progress-fill);
+  transition: width 0.2s ease, background-color 0.12s ease;
+}
+
+/* -------------------------
+   Preserve & extend existing theme-dark overrides
+   ------------------------- */
 
 .theme-dark {
   --dashboard-page-text: #e7e6e6;
@@ -45,7 +138,28 @@ html, body {
   --dashboard-card-bg: #0b0b0b;           /* sidebar background / button hover fallback color */
   --dashboard-card-strong-bg: #0a0a0a;
   --dashboard-card-text: #949494;
+
+  /* UPDATED: dark-mode variants for state-specific variables:
+     - set "done" card bg to #16a34a as requested
+     - set the text color on done cards to black
+  */
+  --dashboard-card-done-bg: #16a34a; /* requested dark-mode done bg */
+  --dashboard-card-done-border: #16a34a;
+  --dashboard-card-done-text: #000000; /* black text on done card in dark mode */
+
+  --dashboard-card-inprogress-bg: #071e18;
+  --dashboard-card-inprogress-border: #16a34a;
+
+  /* progress bar defaults in dark mode */
+  --progress-bg: #1f2937;  /* dark gray background for bar */
+  --progress-fill: #16a34a; /* still default green unless overridden by state */
 }
+
+/* Make the progress-fill black for done cards when in dark mode */
+.theme-dark .dashboard-card--done {
+  --progress-fill: #000000;
+}
+
 .theme-dark {  /* Open Path Box styles */
   --open-path-box-bg: #092722;           /* sidebar background / button hover fallback color */
   --open-path-box-strong-bg: #0a0a0a;
@@ -97,7 +211,7 @@ html, body {
   background-color: var(--dashboard-card-bg) !important;
   color: var(--dashboard-card-text) !important;
   border: 1px solid var(--dashboard-card-border) !important;
-  box-shadow: 0 0 5px rgba(46, 46, 46, 0.6);
+  box-shadow: 0 0 5px rgba(46, 46, 46, 0.356);
 }
 .theme-dark .open-path-box {
   background-color: var(--open-path-box-bg) !important;
@@ -139,4 +253,8 @@ html, body {
   color: var(--section-title-text) !important;
 }
 /* If SignOutButton or other components rely on var(--ui-*) you can adjust additional selectors here. */
+.theme-dark .progress-bar-bg { background-color: #1f2937 !important; /* gray-800 */ }
+.theme-dark .dashboard-card-state-done {
+  color: var(--dashboard-card-done-text) !important;
+}
 

@@ -109,9 +109,12 @@ export default function IslandPage() {
   const saveTimersRef = useRef(new Map());
   const inflightRef = useRef(new Map());
 
-  // progress: island_item_id -> { is_completed, points_earned }
+  // progress: island_item_id (string) -> { is_completed, points_earned }
   const [progressByItemId, setProgressByItemId] = useState({});
   const [userId, setUserId] = useState(null);
+
+  // Keep the active Supabase session in state so UI can check it directly
+  const [session, setSession] = useState(null);
 
   const resultByExerciseId = useMemo(() => {
     const map = new Map();
@@ -121,7 +124,7 @@ export default function IslandPage() {
 
   const exerciseItems = useMemo(() => items.filter((it) => it.item_type === 'exercise' && it.exercise?.id), [items]);
   const completedExerciseItemCount = useMemo(() => {
-    return exerciseItems.filter((it) => Boolean(progressByItemId[it.id]?.is_completed)).length;
+    return exerciseItems.filter((it) => Boolean(progressByItemId[String(it.id)]?.is_completed)).length;
   }, [exerciseItems, progressByItemId]);
 
   const islandCompleted = useMemo(() => {
@@ -131,7 +134,7 @@ export default function IslandPage() {
 
   async function loadProgressForItems(sessionUserId, islandItems) {
     const itemIds = (islandItems || []).map((it) => it.id);
-    if (!itemIds.length) {
+    if (!itemIds.length || !sessionUserId) {
       setProgressByItemId({});
       return;
     }
@@ -150,7 +153,8 @@ export default function IslandPage() {
 
     const map = {};
     for (const row of data || []) {
-      map[row.island_item_id] = {
+      // normalize key to string
+      map[String(row.island_item_id)] = {
         is_completed: Boolean(row.is_completed),
         points_earned: Number(row.points_earned || 0),
       };
@@ -159,6 +163,7 @@ export default function IslandPage() {
   }
 
   async function upsertCompletionForIslandItem({ sessionUserId, islandItemId, pointsEarned, lastAnswer }) {
+    if (!sessionUserId) return false;
     const { error } = await supabase.from('island_item_progress').upsert(
       {
         user_id: sessionUserId,
@@ -176,9 +181,10 @@ export default function IslandPage() {
       return false;
     }
 
+    // store key as string to match loader
     setProgressByItemId((prev) => ({
       ...prev,
-      [islandItemId]: { is_completed: true, points_earned: Number(pointsEarned || 0) },
+      [String(islandItemId)]: { is_completed: true, points_earned: Number(pointsEarned || 0) },
     }));
     return true;
   }
@@ -200,16 +206,14 @@ export default function IslandPage() {
       setUserId(null);
       setSectionSlug(null);
       setSectionTitle(null);
+      setSession(null);
 
       const {
-        data: { session },
+        data: { session: sess },
       } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace('/login');
-        return;
-      }
-
-      setUserId(session.user?.id || null);
+      // set session state and userId (may be null)
+      setSession(sess ?? null);
+      setUserId(sess?.user?.id ?? null);
 
       const { data: isl, error: islErr } = await supabase
         .from('islands')
@@ -299,10 +303,12 @@ export default function IslandPage() {
 
       setItems(hydratedItems);
 
-      await loadProgressForItems(session.user.id, hydratedItems);
+      // Load progress only for logged-in users
+      await loadProgressForItems(sess?.user?.id, hydratedItems);
 
       setLoading(false);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course_id, island_id, router]);
 
   async function saveAttempt(exerciseId, answer, { storeResult } = { storeResult: false }) {
@@ -311,9 +317,9 @@ export default function IslandPage() {
 
     try {
       const {
-        data: { session },
+        data: { session: sess },
       } = await supabase.auth.getSession();
-      if (!session) {
+      if (!sess) {
         router.replace('/login');
         return;
       }
@@ -322,7 +328,7 @@ export default function IslandPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${sess.access_token}`,
         },
         body: JSON.stringify({
           island_id,
@@ -350,9 +356,9 @@ export default function IslandPage() {
           const islandItem = items.find((it) => it.item_type === 'exercise' && it.exercise_id === exerciseId);
           const pts = islandItem?.exercise?.points_max ?? json.points_awarded ?? 0;
 
-          if (islandItem && session.user?.id) {
+          if (islandItem && sess.user?.id) {
             await upsertCompletionForIslandItem({
-              sessionUserId: session.user.id,
+              sessionUserId: sess.user.id,
               islandItemId: islandItem.id,
               pointsEarned: pts,
               lastAnswer: answer,
@@ -383,9 +389,9 @@ export default function IslandPage() {
 
   async function reallySubmitTest() {
     const {
-      data: { session },
+      data: { session: sess },
     } = await supabase.auth.getSession();
-    if (!session) {
+    if (!sess) {
       router.replace('/login');
       return;
     }
@@ -399,7 +405,7 @@ export default function IslandPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
+          Authorization: `Bearer ${sess.access_token}`,
         },
         body: JSON.stringify({ island_id }),
       });
@@ -412,7 +418,7 @@ export default function IslandPage() {
 
       setTestResult(json);
 
-      if (Array.isArray(json.perQuestion) && session.user?.id) {
+      if (Array.isArray(json.perQuestion) && sess.user?.id) {
         for (const q of json.perQuestion) {
           if (!q?.is_correct) continue;
           const islandItem = items.find((it) => it.item_type === 'exercise' && it.exercise_id === q.exercise_id);
@@ -421,7 +427,7 @@ export default function IslandPage() {
           const pts = islandItem.exercise?.points_max ?? q.points_awarded ?? 0;
 
           await upsertCompletionForIslandItem({
-            sessionUserId: session.user.id,
+            sessionUserId: sess.user.id,
             islandItemId: islandItem.id,
             pointsEarned: pts,
             lastAnswer: q.user_answer ?? null,
@@ -556,7 +562,7 @@ export default function IslandPage() {
               const hints = Array.isArray(ex?.hints) ? ex.hints : [];
               const abcdOptions = getAbcdOptionsFromAnswerKey(ex?.answer_key);
 
-              const itemCompleted = Boolean(progressByItemId[it.id]?.is_completed);
+              const itemCompleted = Boolean(progressByItemId[String(it.id)]?.is_completed);
 
               return (
                 <div key={it.id} className={`rounded-2xl border p-4 ${cardStyle}`}>
@@ -669,12 +675,12 @@ export default function IslandPage() {
                             ...prev,
                             [exId]: { ...(prev[exId] || {}), value },
                           }));
-                          if (isTest) scheduleSave(exId, { value });
+                          if (isTest && session) scheduleSave(exId, { value });
                         }}
                         onBlur={() => {
                           if (!isTest) return;
                           const value = (answers[exId]?.value ?? '').toString();
-                          scheduleSave(exId, { value }, 0);
+                          if (session) scheduleSave(exId, { value }, 0);
                         }}
                       />
                     ) : ex?.answer_type === 'abcd' ? (
@@ -702,7 +708,13 @@ export default function IslandPage() {
                                   [exId]: { ...(prev[exId] || {}), choice: nextChoice },
                                 }));
 
-                                if (isTest) saveAttempt(exId, { choice: nextChoice }, { storeResult: false });
+                                if (isTest) {
+                                  if (session) {
+                                    saveAttempt(exId, { choice: nextChoice }, { storeResult: false });
+                                  } else {
+                                    setMsg('Musisz się zalogować, aby zapisać odpowiedzi.');
+                                  }
+                                }
                               }}
                             >
                               {labelText}
@@ -744,8 +756,15 @@ export default function IslandPage() {
 
                       <button
                         type="button"
-                        className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
-                        onClick={() => saveAttempt(exId, answers[exId] || {}, { storeResult: true })}
+                        className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                        onClick={() => {
+                          if (!session) {
+                            setMsg('Zaloguj się, aby sprawdzać i zapisywać odpowiedzi.');
+                            return;
+                          }
+                          saveAttempt(exId, answers[exId] || {}, { storeResult: true });
+                        }}
+                        disabled={!session}
                       >
                         Sprawdź
                       </button>
@@ -782,8 +801,9 @@ export default function IslandPage() {
                       setPendingFinish(null);
                       reallySubmitTest();
                     }}
+                    disabled={!session}
                   >
-                    Zakończ mimo to
+                    {session ? 'Zakończ mimo to' : 'Zaloguj się, aby zakończyć'}
                   </button>
                   <button
                     type="button"
@@ -800,10 +820,10 @@ export default function IslandPage() {
               <button
                 type="button"
                 onClick={onClickFinishTest}
-                disabled={submittingTest}
+                disabled={submittingTest || !session}
                 className="mt-3 rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
-                {submittingTest ? 'Zapisuję…' : 'Zakończ test'}
+                {submittingTest ? 'Zapisuję…' : session ? 'Zakończ test' : 'Zaloguj się, aby zakończyć test'}
               </button>
             ) : (
               <div className="mt-3 text-sm font-semibold text-indigo-900">Test zakończony — wynik jest zapisany poniżej.</div>
