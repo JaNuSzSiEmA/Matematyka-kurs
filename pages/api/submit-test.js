@@ -15,7 +15,6 @@ export default async function handler(req, res) {
     const { island_id } = req.body || {};
     if (!island_id) return res.status(400).json({ error: 'Missing island_id' });
 
-    // Load island + section rules
     const { data: island, error: islErr } = await supabase
       .from('islands')
       .select('id, type, section_id')
@@ -36,17 +35,35 @@ export default async function handler(req, res) {
     const testCount = Number(section.test_questions_count || 6);
     const passPercent = Number(section.pass_percent || 60);
 
-    // Load test exercises in order
-    const { data: items, error: itemsErr } = await supabase
-      .from('island_items')
-      .select('order_index, exercise_id')
+    // ✅ NEW: load checkpoint order + items
+    const { data: cps, error: cpsErr } = await supabase
+      .from('island_checkpoints')
+      .select('id, order_index')
       .eq('island_id', island_id)
-      .eq('item_type', 'exercise')
       .order('order_index', { ascending: true });
+
+    if (cpsErr) return res.status(500).json({ error: 'Load checkpoints failed', details: cpsErr.message });
+
+    const cpOrder = new Map((cps || []).map((c) => [c.id, c.order_index]));
+    const cpIds = (cps || []).map((c) => c.id);
+
+    const { data: items, error: itemsErr } = await supabase
+      .from('island_checkpoint_items')
+      .select('checkpoint_id, order_index, exercise_id')
+      .in('checkpoint_id', cpIds)
+      .eq('item_type', 'exercise');
 
     if (itemsErr) return res.status(500).json({ error: 'Load items failed', details: itemsErr.message });
 
-    const orderedExerciseIds = (items || []).map((x) => x.exercise_id).filter(Boolean);
+    const orderedExerciseIds = (items || [])
+      .filter((x) => x.exercise_id)
+      .sort((a, b) => {
+        const ca = cpOrder.get(a.checkpoint_id) || 0;
+        const cb = cpOrder.get(b.checkpoint_id) || 0;
+        if (ca !== cb) return ca - cb;
+        return (a.order_index || 0) - (b.order_index || 0);
+      })
+      .map((x) => x.exercise_id);
 
     if (orderedExerciseIds.length !== testCount) {
       return res.status(400).json({
@@ -54,7 +71,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // Load attempts for these exercises (latest per exercise)
     const { data: attempts, error: attErr } = await supabase
       .from('exercise_attempts')
       .select('exercise_id, is_correct, created_at, answer')
@@ -70,7 +86,6 @@ export default async function handler(req, res) {
       if (!latestByExercise.has(a.exercise_id)) latestByExercise.set(a.exercise_id, a);
     }
 
-    // Load exercise types
     const { data: exRows, error: exRowsErr } = await supabase
       .from('exercises')
       .select('id, answer_type')
@@ -82,7 +97,6 @@ export default async function handler(req, res) {
 
     const exById = new Map((exRows || []).map((e) => [e.id, e]));
 
-    // Load correct answers from admin-only table (service role bypasses RLS)
     const { data: keyRows, error: keyRowsErr } = await supabase
       .from('exercise_answer_keys')
       .select('exercise_id, answer_key')
@@ -97,7 +111,7 @@ export default async function handler(req, res) {
     const perQuestion = orderedExerciseIds.map((exId, idx) => {
       const latest = latestByExercise.get(exId);
       const answered = Boolean(latest);
-      const is_correct = answered ? latest.is_correct === true : false; // unanswered counts as wrong
+      const is_correct = answered ? latest.is_correct === true : false;
 
       const ex = exById.get(exId);
       const answer_type = ex?.answer_type || null;
@@ -126,7 +140,6 @@ export default async function handler(req, res) {
     const score_percent = Math.round((correctCount / testCount) * 100);
     const passed = score_percent >= passPercent;
 
-    // Store a test attempt snapshot
     const { error: insTestErr } = await supabase.from('section_test_attempts').insert({
       user_id: userId,
       section_id: island.section_id,
@@ -138,7 +151,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Insert test attempt failed', details: insTestErr.message });
     }
 
-    // Upsert best score in section_progress
     const { data: existing, error: existingErr } = await supabase
       .from('section_progress')
       .select('id, best_test_score_percent')

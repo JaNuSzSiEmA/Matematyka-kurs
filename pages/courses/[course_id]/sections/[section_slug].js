@@ -140,25 +140,44 @@ export default function SectionPathPage() {
         return;
       }
 
-      // load island_items
-      const { data: items, error: itemsErr } = await supabase
-        .from('island_items')
-        .select(`
-          id,
-          island_id,
-          item_type,
-          exercise_id,
-          exercises:exercise_id ( id, points_max )
-        `)
-        .in('island_id', islandIds);
+      const { data: cpRows, error: cpErr } = await supabase
+  .from('island_checkpoints')
+  .select('id, island_id')
+  .in('island_id', islandIds);
 
-      if (itemsErr) {
-        setMsg('Błąd pobierania island_items: ' + itemsErr.message);
-        setLoading(false);
-        return;
-      }
+if (cpErr) {
+  setMsg('Błąd pobierania checkpointów: ' + cpErr.message);
+  setLoading(false);
+  return;
+}
 
-      const exerciseItems = (items || []).filter((it) => it.item_type === 'exercise' && it.exercise_id);
+const checkpointIds = (cpRows || []).map((c) => c.id);
+const checkpointById = Object.fromEntries((cpRows || []).map((c) => [c.id, c.island_id]));
+
+const { data: items, error: itemsErr } = await supabase
+  .from('island_checkpoint_items')
+  .select(`
+    id,
+    checkpoint_id,
+    item_type,
+    exercise_id,
+    exercises:exercise_id ( id, points_max )
+  `)
+  .in('checkpoint_id', checkpointIds);
+
+if (itemsErr) {
+  setMsg('Błąd pobierania checkpoint_items: ' + itemsErr.message);
+  setLoading(false);
+  return;
+}
+
+const exerciseItems = (items || [])
+  .filter((it) => it.item_type === 'exercise' && it.exercise_id)
+  .map((it) => ({
+    ...it,
+    island_id: checkpointById[it.checkpoint_id],
+  }))
+  .filter((it) => it.island_id);
 
       // debug - items per island
       const byIsland = {};

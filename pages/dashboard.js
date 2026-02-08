@@ -196,20 +196,40 @@ export default function DashboardPage() {
           return;
         }
 
-        // Logged-in user: load exercise items and progress as before
-        const { data: itemRows, error: itemErr } = await supabase
-          .from('island_items')
-          .select('id, island_id, item_type')
-          .in('island_id', islandIds);
+        const { data: cpRows, error: cpErr } = await supabase
+  .from('island_checkpoints')
+  .select('id, island_id')
+  .in('island_id', islandIds);
 
-        if (itemErr) {
-          setMsg((prev) => (prev ? prev + ' ' : '') + 'Błąd pobierania island_items: ' + itemErr.message);
-          setLoading(false);
-          return;
-        }
+if (cpErr) {
+  setMsg((prev) => (prev ? prev + ' ' : '') + 'Błąd pobierania checkpointów: ' + cpErr.message);
+  setLoading(false);
+  return;
+}
 
-        const exerciseItems = (itemRows || []).filter((it) => it.item_type === 'exercise');
-        const exerciseItemIds = exerciseItems.map((it) => it.id);
+const checkpointIds = (cpRows || []).map((c) => c.id);
+const checkpointById = Object.fromEntries((cpRows || []).map((c) => [c.id, c.island_id]));
+
+const { data: itemRows, error: itemErr } = await supabase
+  .from('island_checkpoint_items')
+  .select('id, checkpoint_id, item_type')
+  .in('checkpoint_id', checkpointIds);
+
+if (itemErr) {
+  setMsg((prev) => (prev ? prev + ' ' : '') + 'Błąd pobierania checkpoint_items: ' + itemErr.message);
+  setLoading(false);
+  return;
+}
+
+const exerciseItems = (itemRows || [])
+  .filter((it) => it.item_type === 'exercise')
+  .map((it) => ({
+    ...it,
+    island_id: checkpointById[it.checkpoint_id],
+  }))
+  .filter((it) => it.island_id);
+
+const exerciseItemIds = exerciseItems.map((it) => it.id);
 
         // 3) load progress for these island_item ids for current user
         let prog = [];

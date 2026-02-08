@@ -2,9 +2,16 @@ import '../styles/globals.css';
 import Layout from '../components/Layout';
 import { useEffect } from 'react';
 import { useRouter } from 'next/router';
+import useBackgroundOrbit from '../components/useBackgroundOrbit';
 
 export default function MyApp({ Component, pageProps }) {
   const router = useRouter();
+
+ useBackgroundOrbit({
+  radiusX: 600,
+  radiusY: 400,
+  durationMs: 120000,
+});
 
   useEffect(() => {
     if (typeof document === 'undefined') return;

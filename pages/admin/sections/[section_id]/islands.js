@@ -166,11 +166,11 @@ export default function AdminSectionIslands() {
                       </div>
 
                       <Link
-                        href={`/admin/islands/${isl.id}`}
-                        className="rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-2 text-sm font-semibold text-white"
-                      >
-                        Edytuj zawartość →
-                      </Link>
+  href={`/admin/sections/${section_id}/islands/${isl.id}/checkpoints`}
+  className="rounded-xl border border-emerald-700 bg-emerald-700 px-4 py-2 text-sm font-semibold text-white"
+>
+  Checkpointy →
+</Link>
                     </div>
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-5">

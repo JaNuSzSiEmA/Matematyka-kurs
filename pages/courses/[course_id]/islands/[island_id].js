@@ -88,7 +88,10 @@ export default function IslandPage() {
   const [msg, setMsg] = useState('');
 
   const [island, setIsland] = useState(null);
-  const [items, setItems] = useState([]);
+
+  // ✅ NOWE: checkpointy
+  const [checkpoints, setCheckpoints] = useState([]);
+  const [activeCheckpointId, setActiveCheckpointId] = useState(null);
 
   const [answers, setAnswers] = useState({});
   const [saved, setSaved] = useState({});
@@ -99,7 +102,6 @@ export default function IslandPage() {
   const [pendingFinish, setPendingFinish] = useState(null);
   const [testRules, setTestRules] = useState({ test_questions_count: 6, pass_percent: 60 });
 
-  // NEW: track section link info for the back button
   const [sectionSlug, setSectionSlug] = useState(null);
   const [sectionTitle, setSectionTitle] = useState(null);
 
@@ -109,12 +111,13 @@ export default function IslandPage() {
   const saveTimersRef = useRef(new Map());
   const inflightRef = useRef(new Map());
 
-  // progress: island_item_id (string) -> { is_completed, points_earned }
   const [progressByItemId, setProgressByItemId] = useState({});
   const [userId, setUserId] = useState(null);
 
-  // Keep the active Supabase session in state so UI can check it directly
   const [session, setSession] = useState(null);
+  const [nextIsland, setNextIsland] = useState(null);
+
+  const isTest = island?.type === 'test';
 
   const resultByExerciseId = useMemo(() => {
     const map = new Map();
@@ -122,7 +125,21 @@ export default function IslandPage() {
     return map;
   }, [testResult]);
 
-  const exerciseItems = useMemo(() => items.filter((it) => it.item_type === 'exercise' && it.exercise?.id), [items]);
+  const allCheckpointItems = useMemo(() => {
+    return (checkpoints || []).flatMap((cp) => cp.items || []);
+  }, [checkpoints]);
+
+  const activeCheckpoint = useMemo(() => {
+    return checkpoints.find((c) => c.id === activeCheckpointId) || checkpoints[0] || null;
+  }, [checkpoints, activeCheckpointId]);
+
+  const items = useMemo(() => {
+    if (isTest) return allCheckpointItems;
+    return activeCheckpoint?.items || [];
+  }, [isTest, activeCheckpoint, allCheckpointItems]);
+
+  const exerciseItems = useMemo(() => allCheckpointItems.filter((it) => it.item_type === 'exercise' && it.exercise?.id), [allCheckpointItems]);
+
   const completedExerciseItemCount = useMemo(() => {
     return exerciseItems.filter((it) => Boolean(progressByItemId[String(it.id)]?.is_completed)).length;
   }, [exerciseItems, progressByItemId]);
@@ -132,35 +149,37 @@ export default function IslandPage() {
     return completedExerciseItemCount === exerciseItems.length;
   }, [exerciseItems.length, completedExerciseItemCount]);
 
-  async function loadProgressForItems(sessionUserId, islandItems) {
-    const itemIds = (islandItems || []).map((it) => it.id);
-    if (!itemIds.length || !sessionUserId) {
-      setProgressByItemId({});
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('island_item_progress')
-      .select('island_item_id, is_completed, points_earned')
-      .eq('user_id', sessionUserId)
-      .in('island_item_id', itemIds);
-
-    if (error) {
-      setMsg((prev) => (prev ? prev + ' ' : '') + `Progress load failed: ${error.message}`);
-      setProgressByItemId({});
-      return;
-    }
-
-    const map = {};
-    for (const row of data || []) {
-      // normalize key to string
-      map[String(row.island_item_id)] = {
-        is_completed: Boolean(row.is_completed),
-        points_earned: Number(row.points_earned || 0),
-      };
-    }
-    setProgressByItemId(map);
+ async function loadProgressForItems(sessionUserId, islandItems) {
+  const itemIds = (islandItems || []).map((it) => it.id);
+  if (!itemIds.length || !sessionUserId) {
+    const empty = {};
+    setProgressByItemId(empty);
+    return empty;
   }
+
+  const { data, error } = await supabase
+    .from('island_item_progress')
+    .select('island_item_id, is_completed, points_earned')
+    .eq('user_id', sessionUserId)
+    .in('island_item_id', itemIds);
+
+  if (error) {
+    setMsg((prev) => (prev ? prev + ' ' : '') + `Progress load failed: ${error.message}`);
+    const empty = {};
+    setProgressByItemId(empty);
+    return empty;
+  }
+
+  const map = {};
+  for (const row of data || []) {
+    map[String(row.island_item_id)] = {
+      is_completed: Boolean(row.is_completed),
+      points_earned: Number(row.points_earned || 0),
+    };
+  }
+  setProgressByItemId(map);
+  return map;
+}
 
   async function upsertCompletionForIslandItem({ sessionUserId, islandItemId, pointsEarned, lastAnswer }) {
     if (!sessionUserId) return false;
@@ -181,7 +200,6 @@ export default function IslandPage() {
       return false;
     }
 
-    // store key as string to match loader
     setProgressByItemId((prev) => ({
       ...prev,
       [String(islandItemId)]: { is_completed: true, points_earned: Number(pointsEarned || 0) },
@@ -211,7 +229,6 @@ export default function IslandPage() {
       const {
         data: { session: sess },
       } = await supabase.auth.getSession();
-      // set session state and userId (may be null)
       setSession(sess ?? null);
       setUserId(sess?.user?.id ?? null);
 
@@ -232,6 +249,21 @@ export default function IslandPage() {
         return;
       }
       setIsland(isl);
+      const { data: nextIsl, error: nextErr } = await supabase
+  .from('islands')
+  .select('id, title, order_index')
+  .eq('section_id', isl.section_id)
+  .eq('is_active', true)
+  .gt('order_index', isl.order_index)
+  .order('order_index', { ascending: true })
+  .limit(1)
+  .maybeSingle();
+
+if (!nextErr && nextIsl) {
+  setNextIsland(nextIsl);
+} else {
+  setNextIsland(null);
+}
 
       const { data: secRules, error: secRulesErr } = await supabase
         .from('sections')
@@ -248,20 +280,38 @@ export default function IslandPage() {
         setSectionTitle(secRules.title || null);
       }
 
-      const { data: its, error: itsErr } = await supabase
-        .from('island_items')
-        .select('id, item_type, order_index, title, youtube_url, exercise_id')
+      const { data: cps, error: cpErr } = await supabase
+        .from('island_checkpoints')
+        .select(
+          `
+          id,
+          title,
+          order_index,
+          is_active,
+          items:island_checkpoint_items (
+            id,
+            item_type,
+            order_index,
+            title,
+            youtube_url,
+            exercise_id
+          )
+        `
+        )
         .eq('island_id', island_id)
-        .order('order_index', { ascending: true });
+        .order('order_index', { ascending: true })
+        .order('order_index', { ascending: true, foreignTable: 'items' });
 
-      if (itsErr) {
-        setMsg('Błąd pobierania elementów wyspy: ' + itsErr.message);
-        setItems([]);
+      if (cpErr) {
+        setMsg('Błąd pobierania checkpointów: ' + cpErr.message);
+        setCheckpoints([]);
         setLoading(false);
         return;
       }
 
-      const exIds = (its || []).map((x) => x.exercise_id).filter(Boolean);
+      const activeCps = (cps || []).filter((c) => c.is_active !== false);
+      const allItems = activeCps.flatMap((cp) => cp.items || []);
+      const exIds = allItems.map((x) => x.exercise_id).filter(Boolean);
 
       let exById = {};
       let answerKeyById = {};
@@ -290,25 +340,50 @@ export default function IslandPage() {
         }
       }
 
-      const hydratedItems =
-        (its || []).map((it) => {
-          const ex = it.exercise_id ? exById[it.exercise_id] : null;
-          const answer_key = it.exercise_id ? answerKeyById[it.exercise_id] : null;
+      const hydratedCheckpoints =
+        activeCps.map((cp) => ({
+          ...cp,
+          items: (cp.items || []).map((it) => {
+            const ex = it.exercise_id ? exById[it.exercise_id] : null;
+            const answer_key = it.exercise_id ? answerKeyById[it.exercise_id] : null;
 
-          return {
-            ...it,
-            exercise: ex ? { ...ex, answer_key } : null,
-          };
-        }) || [];
+            return {
+              ...it,
+              exercise: ex ? { ...ex, answer_key } : null,
+            };
+          }),
+        })) || [];
 
-      setItems(hydratedItems);
+      setCheckpoints(hydratedCheckpoints);
 
-      // Load progress only for logged-in users
-      await loadProgressForItems(sess?.user?.id, hydratedItems);
+// ✅ najpierw pobierz progress
+const progressMap = await loadProgressForItems(sess?.user?.id, allItems);
+
+// ✅ potem wybierz checkpoint wg progresu
+const statusById = hydratedCheckpoints.map((cp) => {
+  const items = cp.items || [];
+  const exerciseItems = items.filter((i) => i.item_type === 'exercise');
+  if (exerciseItems.length === 0) return 'empty';
+
+  const doneCount = exerciseItems.filter((i) => progressMap[String(i.id)]?.is_completed).length;
+  if (doneCount === 0) return 'future';
+  if (doneCount === exerciseItems.length) return 'done';
+  return 'in_progress';
+});
+
+let nextId = null;
+const firstInProgressIdx = statusById.findIndex((s) => s === 'in_progress');
+if (firstInProgressIdx !== -1) {
+  nextId = hydratedCheckpoints[firstInProgressIdx]?.id || null;
+} else {
+  const firstFutureIdx = statusById.findIndex((s) => s === 'future');
+  nextId = firstFutureIdx !== -1 ? hydratedCheckpoints[firstFutureIdx]?.id : null;
+}
+
+setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
 
       setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course_id, island_id, router]);
 
   async function saveAttempt(exerciseId, answer, { storeResult } = { storeResult: false }) {
@@ -353,7 +428,7 @@ export default function IslandPage() {
         }));
 
         if (json.is_correct) {
-          const islandItem = items.find((it) => it.item_type === 'exercise' && it.exercise_id === exerciseId);
+          const islandItem = allCheckpointItems.find((it) => it.item_type === 'exercise' && it.exercise_id === exerciseId);
           const pts = islandItem?.exercise?.points_max ?? json.points_awarded ?? 0;
 
           if (islandItem && sess.user?.id) {
@@ -421,7 +496,7 @@ export default function IslandPage() {
       if (Array.isArray(json.perQuestion) && sess.user?.id) {
         for (const q of json.perQuestion) {
           if (!q?.is_correct) continue;
-          const islandItem = items.find((it) => it.item_type === 'exercise' && it.exercise_id === q.exercise_id);
+          const islandItem = allCheckpointItems.find((it) => it.item_type === 'exercise' && it.exercise_id === q.exercise_id);
           if (!islandItem) continue;
 
           const pts = islandItem.exercise?.points_max ?? q.points_awarded ?? 0;
@@ -452,7 +527,6 @@ export default function IslandPage() {
     );
   }
 
-  const isTest = island?.type === 'test';
   const testCount = isTest ? (testRules?.test_questions_count ?? 6) : null;
   const passPercent = isTest ? (testRules?.pass_percent ?? 60) : null;
 
@@ -468,6 +542,30 @@ export default function IslandPage() {
 
   const backHref =
     sectionSlug && course_id ? `/courses/${course_id}/sections/${sectionSlug}` : `/courses/${course_id}`;
+
+  const checkpointStatus = checkpoints.map((cp) => {
+    const items = cp.items || [];
+    const exerciseItems = items.filter((i) => i.item_type === 'exercise');
+    if (exerciseItems.length === 0) return 'empty';
+    const doneCount = exerciseItems.filter((i) => progressByItemId[String(i.id)]?.is_completed).length;
+
+    if (doneCount === 0) return 'future';
+    if (doneCount === exerciseItems.length) return 'done';
+    return 'in_progress';
+  });
+  const activeIndex = checkpoints.findIndex((cp) => cp.id === activeCheckpointId);
+
+function goPrevCheckpoint() {
+  if (activeIndex > 0) {
+    setActiveCheckpointId(checkpoints[activeIndex - 1].id);
+  }
+}
+
+function goNextCheckpoint() {
+  if (activeIndex < checkpoints.length - 1) {
+    setActiveCheckpointId(checkpoints[activeIndex + 1].id);
+  }
+}
 
   return (
     <div className="min-h-screen bg-white">
@@ -488,25 +586,92 @@ export default function IslandPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
+  {islandCompleted && nextIsland ? (
+    <Link
+      href={`/courses/${course_id}/islands/${nextIsland.id}`}
+      className="rounded-full border border-green-700 bg-green-700 px-3 py-1 text-xs font-semibold text-white"
+    >
+      Następna wyspa →
+    </Link>
+  ) : null}
 
-            <span
-              className={[
-                'h-fit rounded-full px-3 py-1 text-xs font-semibold',
-                isTest ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800',
-              ].join(' ')}
-            >
-              {isTest ? 'TEST' : 'NORMAL'}
-            </span>
-          </div>
+  {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
+
+  <span
+    className={[
+      'h-fit rounded-full px-3 py-1 text-xs font-semibold',
+      isTest ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800',
+    ].join(' ')}
+  >
+    {isTest ? 'TEST' : 'NORMAL'}
+  </span>
+</div>
         </div>
 
-        {!isTest ? (
-          <div className="mt-3 text-xs text-gray-600">
-            Ukończone ćwiczenia: <b>{completedExerciseItemCount}</b> / {exerciseItems.length}
-          </div>
-        ) : null}
+        
 
+        {!isTest && checkpoints.length > 0 ? (
+  <div className="sticky top-0 z-20 -mx-6 bg-white/95 backdrop-blur border-b border-gray-100">
+    <div className="mx-auto max-w-3xl px-6 py-3">
+    <div className="relative flex items-center gap-3">
+      <button
+        type="button"
+        onClick={goPrevCheckpoint}
+        disabled={activeIndex <= 0}
+        className="rounded-full border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-700 disabled:opacity-40"
+      >
+        ←
+      </button>
+
+      <div className="relative flex-1">
+        <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-green-500" />
+
+        <div className="relative flex items-center justify-between">
+          {checkpoints.map((cp, idx) => {
+            const status = checkpointStatus[idx];
+            const isActive = cp.id === activeCheckpointId;
+
+            const dotClass =
+              status === 'done'
+                ? 'bg-green-500 border-green-500'
+                : status === 'in_progress'
+                  ? 'bg-green-200 border-green-500'
+                  : 'bg-white border-green-500';
+
+            return (
+              <button
+                key={cp.id}
+                type="button"
+                onClick={() => setActiveCheckpointId(cp.id)}
+                className="flex items-center"
+              >
+                <span
+                  className={[
+                    'h-5 w-5 rounded-full border-2',
+                    dotClass,
+                    isActive ? 'ring-2 ring-green-700 ring-offset-2' : '',
+                  ].join(' ')}
+                />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={goNextCheckpoint}
+        disabled={activeIndex >= checkpoints.length - 1}
+        className="rounded-full border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-700 disabled:opacity-40"
+      >
+        →
+      </button>
+    </div>
+
+    
+  </div>
+  </div>
+) : null}
         {msg ? (
           <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
         ) : null}
@@ -514,7 +679,7 @@ export default function IslandPage() {
         <div className="mt-6 space-y-4">
           {items.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 p-4 text-sm text-gray-700">
-              Brak elementów w tej wyspie.
+              Brak elementów w tym checkpointcie.
             </div>
           ) : (
             items.map((it) => {
@@ -779,6 +944,27 @@ export default function IslandPage() {
               );
             })
           )}
+          {!isTest && checkpoints.length > 0 ? (
+  <div className="mt-8 flex items-center justify-between">
+    <button
+      type="button"
+      onClick={goPrevCheckpoint}
+      disabled={activeIndex <= 0}
+      className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 disabled:opacity-40"
+    >
+      ← Wstecz
+    </button>
+
+    <button
+      type="button"
+      onClick={goNextCheckpoint}
+      disabled={activeIndex >= checkpoints.length - 1}
+      className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+    >
+      Dalej →
+    </button>
+  </div>
+) : null}
         </div>
 
         {isTest ? (

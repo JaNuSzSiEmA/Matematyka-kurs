@@ -16,6 +16,7 @@ const TABS = [
   { key: 'repetytorium', label: 'Repetytorium', href: '/repetytorium' },
   { key: 'mathmare', label: 'Mathmare', href: '/mathmare' },
   { key: 'opcje', label: 'Opcje', href: '/options' },
+  { key: 'admin', label: 'Admin', href: '/admin' },
 ];
 
 export default function Sidebar() {
@@ -56,7 +57,7 @@ export default function Sidebar() {
     >
       <div className="flex h-full flex-col justify-between">
         <div>
-          <Link href="/" legacyBehavior>
+          <Link href="/home" legacyBehavior>
             <a className="flex items-center gap-3 px-2">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-700 text-white">
                 LOGO

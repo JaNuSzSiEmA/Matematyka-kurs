@@ -257,4 +257,108 @@ html, body {
 .theme-dark .dashboard-card-state-done {
   color: var(--dashboard-card-done-text) !important;
 }
+/* === Static global wave background (solid, recolored) === */
+html, body {
+  height: 100%;
+  background: transparent;
+}
 
+/* Base color layer */
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background: #092722;
+}
+
+/* === Mask size variables (tune these if needed) === */
+:root {
+  --mask-width: 4000;  /* your image width */
+  --mask-height: 2000; /* your image height */
+}
+
+/* Black stripes layer (masked by your image) */
+html::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+
+  background: #000;
+
+  -webkit-mask-image: url("/login-picture.jpeg");
+  mask-image: url("/login-picture.jpeg");
+
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+
+  -webkit-mask-size: calc(var(--mask-width) * 1px) calc(var(--mask-height) * 1px);
+  mask-size: calc(var(--mask-width) * 1px) calc(var(--mask-height) * 1px);
+
+  -webkit-mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
+  mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
+
+  -webkit-mask-mode: luminance;
+  mask-mode: luminance;
+
+  opacity: 1;
+}
+
+/* Let the global background show through */
+.dashboard-page {
+  background: transparent !important;
+}
+/* === Light/Dark stripe color overrides === */
+
+/* Light mode: white stripes */
+html::after {
+  background: #468850;
+}
+
+/* Dark mode: black stripes */
+html.theme-dark::after {
+  background: #3f4642;
+}
+/* Use CSS vars for mask position (JS will update these) */
+html::after {
+  -webkit-mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
+  mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
+  will-change: mask-position, -webkit-mask-position;
+}
+.login-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.35);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  backdrop-filter: blur(6px);
+}
+
+.login-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/login-background.jpeg");
+  background-size: cover;
+  background-position: center;
+  z-index: 0;
+}
+
+/* This overlay is where you pick the exact color */
+.login-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #0e5214; /* <- pick exact color here */
+  mix-blend-mode: color; /* or try "multiply", "overlay" */
+  opacity: 1; /* strength of the tint */
+  z-index: 0;
+}
+
+.login-card > * {
+  position: relative;
+  z-index: 1;
+}

@@ -1,4 +1,5 @@
 import ThemeToggle from '../components/ThemeToggle';
+import AnimatedBgToggle from '../components/AnimatedBgToggle';
 
 export default function OptionsPage() {
   return (
@@ -15,6 +16,19 @@ export default function OptionsPage() {
 
             <div className="ml-auto">
               <ThemeToggle />
+            </div>
+          </label>
+        </section>
+
+        <section className="mb-6">
+          <label className="flex items-center gap-4">
+            <div>
+              <div className="text-sm text-white font-medium">Animowane tło</div>
+              <div className="text-xs text-white">Włącz/wyłącz animowane tło</div>
+            </div>
+
+            <div className="ml-auto">
+              <AnimatedBgToggle />
             </div>
           </label>
         </section>
