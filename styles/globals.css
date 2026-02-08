@@ -279,34 +279,56 @@ html::before {
   --mask-height: 2000; /* your image height */
 }
 
-/* Black stripes layer (masked by your image) */
-html::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-
-  background: #000;
-
-  -webkit-mask-image: url("/login-picture.jpeg");
-  mask-image: url("/login-picture.jpeg");
-
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-
-  -webkit-mask-size: calc(var(--mask-width) * 1px) calc(var(--mask-height) * 1px);
-  mask-size: calc(var(--mask-width) * 1px) calc(var(--mask-height) * 1px);
-
-  -webkit-mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
-  mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
-
-  -webkit-mask-mode: luminance;
-  mask-mode: luminance;
-
-  opacity: 1;
+/* Fallback background (iOS Safari często ignoruje mask-image na html::after) */
+html {
+  background: #468850;
 }
 
+/* Jeśli mask-image działa — użyj go */
+@supports (-webkit-mask-image: url("/login-picture.jpeg")) or (mask-image: url("/login-picture.jpeg")) {
+  html::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+
+    background: #468850;
+
+    -webkit-mask-image: url("/login-picture.jpeg");
+    mask-image: url("/login-picture.jpeg");
+
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+
+    -webkit-mask-size: calc(var(--mask-width) * 1px) calc(var(--mask-height) * 1px);
+    mask-size: calc(var(--mask-width) * 1px) calc(var(--mask-height) * 1px);
+
+    -webkit-mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
+    mask-position: calc(50% + var(--mask-x, 0px)) calc(50% + var(--mask-y, 0px));
+
+    -webkit-mask-mode: luminance;
+    mask-mode: luminance;
+
+    opacity: 1;
+    will-change: mask-position, -webkit-mask-position;
+  }
+}
+
+/* Jeśli mask-image NIE działa — pokaż normalne tło */
+@supports not ((-webkit-mask-image: url("/login-picture.jpeg")) or (mask-image: url("/login-picture.jpeg"))) {
+  html {
+    background-image: url("/login-picture.jpeg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+}
+
+/* Dark mode override */
+html.theme-dark {
+  background: #3f4642;
+}
 /* Let the global background show through */
 .dashboard-page {
   background: transparent !important;
