@@ -260,7 +260,6 @@ html, body {
 /* === Static global wave background (solid, recolored) === */
 html, body {
   height: 100%;
-  background: transparent;
 }
 
 /* Base color layer */
@@ -317,7 +316,7 @@ html {
 
 /* Jeśli mask-image NIE działa — pokaż normalne tło */
 @supports not ((-webkit-mask-image: url("/login-picture.jpeg")) or (mask-image: url("/login-picture.jpeg"))) {
-  html {
+  body {
     background-image: url("/login-picture.jpeg");
     background-size: cover;
     background-position: center;
