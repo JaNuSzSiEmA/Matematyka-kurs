@@ -383,3 +383,17 @@ html::after {
   position: relative;
   z-index: 1;
 }
+/* iOS fallback: disable mask layers and show normal background image */
+@supports (-webkit-touch-callout: none) {
+  html::before,
+  html::after {
+    content: none !important;
+  }
+
+  html, body {
+    background-image: url("/login-picture.jpeg") !important;
+    background-size: cover !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+  }
+}
