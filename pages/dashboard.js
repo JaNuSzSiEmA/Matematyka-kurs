@@ -225,12 +225,11 @@ export default function DashboardPage() {
   return (
     // removed forced white bg so dark page background can show when theme-dark + page-target-dark are present
     <div className="min-h-screen dashboard-page">
-      <div className="mx-auto max-w-4xl p-6">
+      <div className="mx-auto max-w-4xl p-4 sm:p-6">
         
-
         {/* main panel uses ui-surface so dark-theme overrides can change its appearance */}
-        <div className="mt-6 rounded-2xl border p-4 main-panel-surface">
-          <h2 className="text-lg font-semibold dashboard-title">Działy</h2>
+        <div className="mt-4 sm:mt-6 rounded-2xl border p-4 sm:p-6 main-panel-surface">
+          <h2 className="text-lg sm:text-xl font-semibold dashboard-title">Działy</h2>
           
 
           {loading ? (
@@ -252,13 +251,13 @@ export default function DashboardPage() {
                 return (
                   <li 
                     key={s.id} 
-                    className={`rounded-2xl border p-5 dashboard-card ${cardBgClass} animate-fade-in-up card-hover-lift`}
+                    className={`rounded-2xl border p-4 sm:p-5 dashboard-card ${cardBgClass} animate-fade-in-up card-hover-lift`}
                     style={{ animationDelay: `${idx * 0.1}s` }}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
-                          <div className="text-base font-bold dashboard-title">{s.title}</div>
+                          <div className="text-base sm:text-lg font-bold dashboard-title">{s.title}</div>
                           {state === 'done' && (
                             <span className="inline-flex items-center">
                               <CheckIcon state="done" size={18} />
@@ -288,11 +287,11 @@ export default function DashboardPage() {
 
                       <div className="flex flex-col items-end gap-2">
                         {s.is_free ? (
-                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                          <span className="rounded-full bg-green-100 px-2 sm:px-3 py-1 text-xs font-semibold text-green-800">
                             DARMOWE
                           </span>
                         ) : (
-                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800">
+                          <span className="rounded-full bg-gray-100 px-2 sm:px-3 py-1 text-xs font-semibold text-gray-800">
                             PŁATNE
                           </span>
                         )}
@@ -300,7 +299,7 @@ export default function DashboardPage() {
                         {state === 'in_progress' && (
                           <div className="flex items-center gap-1 text-xs font-semibold text-green-700">
                             <CheckIcon state="in_progress" size={16} />
-                            <span>W trakcie</span>
+                            <span className="hidden sm:inline">W trakcie</span>
                           </div>
                         )}
                       </div>
@@ -309,7 +308,7 @@ export default function DashboardPage() {
                     <div className="mt-4">
                       <Link
                         href={`/courses/${courseId}/sections/${s.slug}`}
-                        className="inline-flex items-center gap-2 rounded-xl border border-gray-900 bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors open-path-box"
+                        className="inline-flex items-center justify-center gap-2 w-full sm:w-auto rounded-xl border border-gray-900 bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors open-path-box"
                       >
                         <span>Otwórz ścieżkę</span>
                         <span>→</span>

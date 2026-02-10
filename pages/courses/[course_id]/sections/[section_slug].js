@@ -266,15 +266,16 @@ export default function SectionPathPage() {
   }
 
   return (
-    <div className="min-h-screen section-page">
-      <div className="mx-auto max-w-3xl p-6">
-        <div className="flex items-start justify-between gap-3">
+    <div className="min-h-screen section-page pb-8">
+      <div className="mx-auto max-w-3xl p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
           <div>
-            <Link href="/dashboard" className="text-sm section-title font-semibold text-gray-700 ">
+            <Link href="/dashboard" className="text-sm section-title font-semibold text-gray-700">
               ← Panel
             </Link>
-            <h1 className=" text-2xl font-bold section-title text-gray-900 p-3 rounded-xl ">{section?.title}</h1>
-           
+            <h1 className="mt-2 text-xl sm:text-2xl font-bold section-title text-gray-900 p-2 sm:p-3 rounded-xl">
+              {section?.title}
+            </h1>
           </div>
 
           {section?.is_free ? (
@@ -286,7 +287,7 @@ export default function SectionPathPage() {
 
         {msg ? <div className="mt-4 text-sm text-red-700">{msg}</div> : null}
 
-        <div className="mt-8 flex flex-col gap-6">
+        <div className="mt-6 sm:mt-8 flex flex-col gap-4 sm:gap-6">
           {islands.map((island, idx) => {
             const isTest = island.type === 'test';
             const st = islandStatsById[island.id] || {
@@ -314,13 +315,13 @@ export default function SectionPathPage() {
                 <Link
                   href={`/courses/${course_id}/islands/${island.id}`}
                   className={[
-                    'w-full max-w-sm rounded-3xl border p-6 shadow-sm card-hover-lift',
+                    'w-full max-w-sm rounded-2xl sm:rounded-3xl border p-5 sm:p-6 shadow-sm card-hover-lift',
                     finalCardClass,
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div className="text-xs font-bold tracking-wide text-gray-500 uppercase">
                           {isTest ? 'TEST (6 zadań)' : `Wyspa ${island.order_index}`}
                         </div>
@@ -330,11 +331,13 @@ export default function SectionPathPage() {
                           </span>
                         )}
                       </div>
-                      <div className="mt-2 text-lg font-bold text-gray-900 island-title">{island.title}</div>
+                      <div className="mt-2 text-base sm:text-lg font-bold text-gray-900 island-title">
+                        {island.title}
+                      </div>
 
                       {!isTest ? (
                         <div className="mt-2 text-xs text-gray-600">
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-3">
                             <span>📊 Punkty: <strong>{st.earnedPoints}/{st.maxPoints}</strong></span>
                             <span>📝 Zadania: <strong>{st.completedExercises}/{st.totalExercises}</strong></span>
                           </div>
