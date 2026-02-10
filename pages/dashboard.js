@@ -225,12 +225,11 @@ export default function DashboardPage() {
   return (
     // removed forced white bg so dark page background can show when theme-dark + page-target-dark are present
     <div className="min-h-screen dashboard-page">
-      <div className="mx-auto max-w-4xl p-6">
+      <div className="mx-auto max-w-4xl p-4 sm:p-6">
         
-
         {/* main panel uses ui-surface so dark-theme overrides can change its appearance */}
-        <div className="mt-6 rounded-2xl border p-4 main-panel-surface">
-          <h2 className="text-lg font-semibold dashboard-title">Działy</h2>
+        <div className="mt-4 sm:mt-6 rounded-2xl border p-4 sm:p-6 main-panel-surface">
+          <h2 className="text-lg sm:text-xl font-semibold dashboard-title">Działy</h2>
           
 
           {loading ? (
@@ -238,68 +237,94 @@ export default function DashboardPage() {
           ) : msg ? (
             <div className="mt-4 text-sm text-red-700">{msg}</div>
           ) : (
-            <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {sectionsWithStats.map((s) => {
+            <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {sectionsWithStats.map((s, idx) => {
                 const state = s.stats.state;
 
-                // new named classes for borders/states; ui-surface still controls background
-                                const cardBorderClass =
+                const cardBgClass =
                   state === 'done'
-                    ? 'border-green-200'
+                    ? 'border-green-300 bg-green-50'
                     : state === 'in_progress'
-                      ? 'border-green-200'
-                      : 'border-gray-200';
+                      ? 'border-green-200 bg-green-50/30'
+                      : 'border-gray-200 bg-white';
 
                 return (
-                  <li key={s.id} className={`rounded-2xl border p-4 dashboard-card ${cardBorderClass}`}>
+                  <li 
+                    key={s.id} 
+                    className={`rounded-2xl border p-4 sm:p-5 dashboard-card ${cardBgClass} animate-fade-in-up card-hover-lift`}
+                    style={{ animationDelay: `${idx * 0.1}s` }}
+                  >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-base font-semibold dashboard-title">{s.title}</div>
-                        <div className="text-xs dashboard-subtext">/{s.slug}</div>
-
-                        <div className="mt-2 text-xs dashboard-subtext">
-                          Postęp: <b>{s.stats.percent}%</b>
-                          {s.stats.totalIslands ? (
-                            <span className="ml-2 dashboard-subtext">
-                              ({s.stats.completedIslands}/{s.stats.totalIslands} wysp)
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="text-base sm:text-lg font-bold dashboard-title">{s.title}</div>
+                          {state === 'done' && (
+                            <span className="inline-flex items-center">
+                              <CheckIcon state="done" size={18} />
                             </span>
-                          ) : null}
+                          )}
+                        </div>
+                        <div className="text-xs dashboard-subtext text-gray-500">/{s.slug}</div>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between text-xs dashboard-subtext">
+                            <span>Postęp</span>
+                            <span className="font-bold">{s.stats.percent}%</span>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                            <div 
+                              className="h-2 rounded-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500 ease-out"
+                              style={{ width: `${s.stats.percent}%` }}
+                            />
+                          </div>
+                          {s.stats.totalIslands > 0 && (
+                            <div className="text-xs dashboard-subtext text-gray-600">
+                              🏝️ Wyspy: {s.stats.completedIslands}/{s.stats.totalIslands}
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex flex-col items-end gap-2">
                         {s.is_free ? (
-                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                          <span className="rounded-full bg-green-100 px-2 sm:px-3 py-1 text-xs font-semibold text-green-800">
                             DARMOWE
                           </span>
                         ) : (
-                          <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800">
+                          <span className="rounded-full bg-gray-100 px-2 sm:px-3 py-1 text-xs font-semibold text-gray-800">
                             PŁATNE
                           </span>
                         )}
 
-                        {/* requested labels + check visuals */}
-                        {state === 'in_progress' ? (
-                          <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
-                            <CheckIcon state="in_progress" size={18} />
-                            W trakcie
+                        {state === 'in_progress' && (
+                          <div className="flex items-center gap-1 text-xs font-semibold text-green-700">
+                            <CheckIcon state="in_progress" size={16} />
+                            <span className="hidden sm:inline">W trakcie</span>
                           </div>
-                        ) : state === 'done' ? (
-                          <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
-                            <CheckIcon state="done" size={18} />
-                            Ukończone
-                          </div>
-                        ) : null}
+                        )}
                       </div>
                     </div>
 
-                    <div className="mt-3">
-                      <Link
-                        href={`/courses/${courseId}/sections/${s.slug}`}
-                        className="inline-block rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900 open-path-box"
-                      >
-                        Otwórz ścieżkę
-                      </Link>
+                    <div className="mt-4">
+                      {s.is_free ? (
+                        <Link
+                          href={`/courses/${courseId}/sections/${s.slug}`}
+                          className="inline-flex items-center justify-center gap-2 w-full sm:w-auto rounded-xl border border-gray-900 bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors open-path-box"
+                        >
+                          <span>Otwórz ścieżkę</span>
+                          <span>→</span>
+                        </Link>
+                      ) : (
+                        <Link
+                          href="/checkout"
+                          className="inline-flex items-center justify-center gap-2 w-full sm:w-auto rounded-xl border border-indigo-600 bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                          <span>Odblokuj dostęp</span>
+                        </Link>
+                      )}
                     </div>
                   </li>
                 );

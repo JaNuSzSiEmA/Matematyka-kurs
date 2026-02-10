@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminGate from '../../../components/admin/AdminGate';
 import { supabase } from '../../../lib/admin';
+import MathTextarea from '../../../components/MathTextarea';
+import MathInput from '../../../components/MathInput';
 
 function hintsFromTextarea(text) {
   const lines = String(text || '')
@@ -696,23 +698,25 @@ export default function AdminIslandEditor() {
                   </label>
                 </div>
 
-                <label className="mt-3 block">
-                  <div className="text-xs font-semibold text-gray-600">Prompt</div>
-                  <textarea
-                    className="mt-1 min-h-[110px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                <div className="mt-3">
+                  <MathTextarea
+                    label="Prompt"
                     value={create.prompt}
                     onChange={(e) => setCreate((p) => ({ ...p, prompt: e.target.value }))}
+                    rows={5}
+                    placeholder="Wpisz treść pytania..."
                   />
-                </label>
+                </div>
 
-                <label className="mt-3 block">
-                  <div className="text-xs font-semibold text-gray-600">description (optional)</div>
-                  <textarea
-                    className="mt-1 min-h-[80px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                <div className="mt-3">
+                  <MathTextarea
+                    label="description (optional)"
                     value={create.description}
                     onChange={(e) => setCreate((p) => ({ ...p, description: e.target.value }))}
+                    rows={3}
+                    placeholder="Dodatkowe informacje o zadaniu..."
                   />
-                </label>
+                </div>
 
                 <label className="mt-3 block">
                   <div className="text-xs font-semibold text-gray-600">image_url (optional)</div>
@@ -749,8 +753,7 @@ export default function AdminIslandEditor() {
                       {['A', 'B', 'C', 'D'].map((opt) => (
                         <div key={opt} className="grid grid-cols-[40px_1fr_110px] items-center gap-2">
                           <div className="text-sm font-semibold text-gray-800">{opt}</div>
-                          <input
-                            className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          <MathInput
                             placeholder={`Treść odpowiedzi ${opt}`}
                             value={
                               opt === 'A'
@@ -791,8 +794,8 @@ export default function AdminIslandEditor() {
                       ))}
                     </div>
                   ) : (
-                    <input
-                      className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                    <MathInput
+                      className="mt-2"
                       placeholder="Poprawna odpowiedź (np. 12)"
                       value={create.correct_numeric}
                       onChange={(e) => setCreate((p) => ({ ...p, correct_numeric: e.target.value }))}

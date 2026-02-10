@@ -3,6 +3,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminGate from '../../components/admin/AdminGate';
 import { supabase } from '../../lib/admin';
+import MathTextarea from '../../components/MathTextarea';
+import MathInput from '../../components/MathInput';
 
 function getCourseLabel(c) {
   return c?.title || c?.name || c?.slug || c?.id || 'course';
@@ -960,23 +962,25 @@ export default function AdminExerciseBank() {
                 </label>
               </div>
 
-              <label className="mt-3 block">
-                <div className="text-xs font-semibold text-gray-600">Question (prompt)</div>
-                <textarea
-                  className="mt-1 min-h-[120px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              <div className="mt-3">
+                <MathTextarea
+                  label="Question (prompt)"
                   value={create.prompt}
                   onChange={(e) => setCreate((p) => ({ ...p, prompt: e.target.value }))}
+                  rows={5}
+                  placeholder="Wpisz treść pytania..."
                 />
-              </label>
+              </div>
 
-              <label className="mt-3 block">
-                <div className="text-xs font-semibold text-gray-600">description (optional)</div>
-                <textarea
-                  className="mt-1 min-h-[70px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              <div className="mt-3">
+                <MathTextarea
+                  label="description (optional)"
                   value={create.description}
                   onChange={(e) => setCreate((p) => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  placeholder="Dodatkowe informacje o zadaniu..."
                 />
-              </label>
+              </div>
 
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <label>
@@ -1033,8 +1037,7 @@ export default function AdminExerciseBank() {
                     {['A', 'B', 'C', 'D'].map((opt) => (
                       <div key={opt} className="grid grid-cols-[40px_1fr_110px] items-center gap-2">
                         <div className="text-sm font-semibold text-gray-800">{opt}</div>
-                        <input
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                        <MathInput
                           placeholder={`Treść odpowiedzi ${opt}`}
                           value={
                             opt === 'A'
@@ -1075,8 +1078,8 @@ export default function AdminExerciseBank() {
                     ))}
                   </div>
                 ) : (
-                  <input
-                    className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                  <MathInput
+                    className="mt-2"
                     placeholder="Poprawna odpowiedź (np. 12)"
                     value={create.correct_numeric}
                     onChange={(e) => setCreate((p) => ({ ...p, correct_numeric: e.target.value }))}
@@ -1102,14 +1105,15 @@ export default function AdminExerciseBank() {
                 />
               </label>
 
-              <label className="mt-3 block">
-                <div className="text-xs font-semibold text-gray-600">hints (one per line)</div>
-                <textarea
-                  className="mt-1 min-h-[90px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+              <div className="mt-3">
+                <MathTextarea
+                  label="hints (one per line)"
                   value={create.hints_text}
                   onChange={(e) => setCreate((p) => ({ ...p, hints_text: e.target.value }))}
+                  rows={3}
+                  placeholder="Wpisz wskazówki, jedna na linię..."
                 />
-              </label>
+              </div>
 
               <div className="mt-3 grid gap-2">
                 <div className="text-xs font-semibold text-gray-600">Flags</div>
@@ -1516,27 +1520,27 @@ Dodawanie\tIle to 2+2?\tnumeric\t4\t1`
                             />
                           </label>
 
-                          <label className="mt-3 block">
-                            <div className="text-xs font-semibold text-gray-600">Prompt</div>
-                            <textarea
-                              className="mt-1 min-h-[90px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          <div className="mt-3">
+                            <MathTextarea
+                              label="Prompt"
                               value={ed.prompt}
                               onChange={(ev) =>
                                 setEditById((p) => ({ ...p, [e.id]: { ...p[e.id], prompt: ev.target.value } }))
                               }
+                              rows={4}
                             />
-                          </label>
+                          </div>
 
-                          <label className="mt-3 block">
-                            <div className="text-xs font-semibold text-gray-600">description</div>
-                            <textarea
-                              className="mt-1 min-h-[60px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          <div className="mt-3">
+                            <MathTextarea
+                              label="description"
                               value={ed.description}
                               onChange={(ev) =>
                                 setEditById((p) => ({ ...p, [e.id]: { ...p[e.id], description: ev.target.value } }))
                               }
+                              rows={3}
                             />
-                          </label>
+                          </div>
 
                           <div className="mt-3 grid gap-3 sm:grid-cols-2">
                             <label>
@@ -1630,16 +1634,16 @@ Dodawanie\tIle to 2+2?\tnumeric\t4\t1`
                             </label>
                           </div>
 
-                          <label className="mt-3 block">
-                            <div className="text-xs font-semibold text-gray-600">hints (one per line)</div>
-                            <textarea
-                              className="mt-1 min-h-[70px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                          <div className="mt-3">
+                            <MathTextarea
+                              label="hints (one per line)"
                               value={ed.hints_text}
                               onChange={(ev) =>
                                 setEditById((p) => ({ ...p, [e.id]: { ...p[e.id], hints_text: ev.target.value } }))
                               }
+                              rows={3}
                             />
-                          </label>
+                          </div>
 
                           <div className="mt-3">
                             <div className="text-xs font-semibold text-gray-600">Flags</div>
@@ -1685,8 +1689,7 @@ Dodawanie\tIle to 2+2?\tnumeric\t4\t1`
                                 {['A', 'B', 'C', 'D'].map((opt) => (
                                   <div key={opt} className="grid grid-cols-[40px_1fr_110px] items-center gap-2">
                                     <div className="text-sm font-semibold text-gray-800">{opt}</div>
-                                    <input
-                                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                                    <MathInput
                                       value={
                                         opt === 'A'
                                           ? ed.optionsA
@@ -1731,8 +1734,8 @@ Dodawanie\tIle to 2+2?\tnumeric\t4\t1`
                                 ))}
                               </div>
                             ) : (
-                              <input
-                                className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+                              <MathInput
+                                className="mt-2"
                                 placeholder="Poprawna odpowiedź"
                                 value={ed.correct_numeric}
                                 onChange={(ev) =>
