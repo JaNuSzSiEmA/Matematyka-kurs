@@ -16,8 +16,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           quantity: 1
         }
       ],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?checkout=success`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/?checkout=cancel`
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/payment-success`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/checkout?canceled=true`
     });
 
     res.status(200).json({ url: session.url });
