@@ -60,8 +60,8 @@ export default function Sidebar() {
       {/* Mobile header with hamburger */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-700 text-white text-xs font-bold">
-            M
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-700 text-white text-lg">
+            📐
           </div>
           <div className="text-sm font-bold text-gray-900">Matematyka</div>
         </Link>
@@ -105,8 +105,8 @@ export default function Sidebar() {
           <div>
             <Link href="/" legacyBehavior>
               <a className="flex items-center gap-3 px-2">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-700 text-white font-bold">
-                  M
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-700 text-white font-bold text-sm">
+                  📐
                 </div>
                 <div>
                   <div className="ui-surface text-sm font-semibold text-gray-900">Matematyka</div>

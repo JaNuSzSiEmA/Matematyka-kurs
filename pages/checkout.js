@@ -164,7 +164,7 @@ export default function CheckoutPage() {
           {/* Footer */}
           <div className="bg-gray-50 px-8 py-4 border-t border-gray-200">
             <p className="text-xs text-center text-gray-600">
-              Masz pytania? <Link href="/dashboard" className="text-indigo-600 hover:text-indigo-700 font-medium">Skontaktuj się z nami</Link>
+              Pytania? Napisz do nas: <a href="mailto:pomoc@matematyka.pl" className="text-indigo-600 hover:text-indigo-700 font-medium">pomoc@matematyka.pl</a>
             </p>
           </div>
         </div>

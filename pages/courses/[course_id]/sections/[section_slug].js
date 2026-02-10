@@ -372,12 +372,6 @@ export default function SectionPathPage() {
                       </div>
                     </div>
                   )}
-                    </div>
-                  ) : (
-                    <div className="mt-4 h-2 w-full rounded-full bg-gray-100">
-                      <div className="h-2 rounded-full bg-indigo-400" style={{ width: '0%' }} />
-                    </div>
-                  )}
                 </Link>
               </div>
             );
