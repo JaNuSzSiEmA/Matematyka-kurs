@@ -301,53 +301,74 @@ export default function SectionPathPage() {
 
             const cardBase =
               st.state === 'done'
-                ? 'border-green-200 island-surface'
+                ? 'border-green-300 bg-green-50 island-surface'
                 : st.state === 'in_progress'
-                ? 'border-green-200 island-surface'
-                : 'border-gray-200 island-surface';
+                ? 'border-green-200 bg-green-50/30 island-surface'
+                : 'border-gray-200 bg-white island-surface';
 
             // tests keep indigo theme, but still show check state
-            const finalCardClass = isTest ? 'border-indigo-300 island-surface' : cardBase;
+            const finalCardClass = isTest ? 'border-indigo-300 bg-indigo-50/50 island-surface' : cardBase;
 
             return (
-              <div key={island.id} className={`flex ${zigZag(idx)}`}>
+              <div key={island.id} className={`flex ${zigZag(idx)} island-card animate-fade-in-up`}>
                 <Link
                   href={`/courses/${course_id}/islands/${island.id}`}
                   className={[
-                    'w-full max-w-sm rounded-3xl border p-5 shadow-sm transition',
-                    'hover:shadow-md',
+                    'w-full max-w-sm rounded-3xl border p-6 shadow-sm card-hover-lift',
                     finalCardClass,
                   ].join(' ')}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold text-gray-500">
-                        {isTest ? 'TEST (6 zadań)' : `WYSPA ${island.order_index}`}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs font-bold tracking-wide text-gray-500 uppercase">
+                          {isTest ? 'TEST (6 zadań)' : `Wyspa ${island.order_index}`}
+                        </div>
+                        {st.state === 'done' && !isTest && (
+                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-800">
+                            ✓ Ukończono
+                          </span>
+                        )}
                       </div>
-                      <div className="mt-1 text-lg font-bold text-gray-900 island-title ">{island.title}</div>
+                      <div className="mt-2 text-lg font-bold text-gray-900 island-title">{island.title}</div>
 
                       {!isTest ? (
-                        <div className="mt-1 text-xs text-gray-600">
-                          Punkty: {st.earnedPoints} / {st.maxPoints} • Ćwiczenia: {st.completedExercises} /{' '}
-                          {st.totalExercises}
+                        <div className="mt-2 text-xs text-gray-600">
+                          <div className="flex items-center gap-3">
+                            <span>📊 Punkty: <strong>{st.earnedPoints}/{st.maxPoints}</strong></span>
+                            <span>📝 Zadania: <strong>{st.completedExercises}/{st.totalExercises}</strong></span>
+                          </div>
                         </div>
                       ) : (
-                        <div className="mt-1 text-xs text-gray-600">Próg zaliczenia działu: 60%</div>
+                        <div className="mt-2 text-xs text-indigo-700 font-medium">
+                          🎯 Próg zaliczenia: 60%
+                        </div>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {!isTest ? <CheckIcon state={st.state} /> : null}
-                      <div className={isTest ? 'text-indigo-700' : 'text-gray-700'}>
-                        <span className="text-sm font-semibold">Otwórz →</span>
+                    <div className="flex flex-col items-center gap-2">
+                      {!isTest && <CheckIcon state={st.state} size={24} />}
+                      <div className={isTest ? 'text-indigo-600' : 'text-gray-600'}>
+                        <span className="text-sm font-semibold">→</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* points bar (requested) */}
-                  {!isTest ? (
-                    <div className="mt-4 h-2 w-full rounded-full bg-gray-100">
-                      <div className="h-2 rounded-full bg-green-500" style={{ width: `${pct}%` }} />
+                  {/* points bar with animation */}
+                  {!isTest && (
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                        <span>Postęp</span>
+                        <span className="font-semibold">{Math.round(pct)}%</span>
+                      </div>
+                      <div className="h-2.5 w-full rounded-full bg-gray-200 overflow-hidden">
+                        <div 
+                          className="h-2.5 rounded-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500 ease-out animate-progress-fill" 
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
                     </div>
                   ) : (
                     <div className="mt-4 h-2 w-full rounded-full bg-gray-100">

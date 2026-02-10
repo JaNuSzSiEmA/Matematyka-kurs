@@ -238,32 +238,51 @@ export default function DashboardPage() {
           ) : msg ? (
             <div className="mt-4 text-sm text-red-700">{msg}</div>
           ) : (
-            <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {sectionsWithStats.map((s) => {
+            <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {sectionsWithStats.map((s, idx) => {
                 const state = s.stats.state;
 
-                // new named classes for borders/states; ui-surface still controls background
-                                const cardBorderClass =
+                const cardBgClass =
                   state === 'done'
-                    ? 'border-green-200'
+                    ? 'border-green-300 bg-green-50'
                     : state === 'in_progress'
-                      ? 'border-green-200'
-                      : 'border-gray-200';
+                      ? 'border-green-200 bg-green-50/30'
+                      : 'border-gray-200 bg-white';
 
                 return (
-                  <li key={s.id} className={`rounded-2xl border p-4 dashboard-card ${cardBorderClass}`}>
+                  <li 
+                    key={s.id} 
+                    className={`rounded-2xl border p-5 dashboard-card ${cardBgClass} animate-fade-in-up card-hover-lift`}
+                    style={{ animationDelay: `${idx * 0.1}s` }}
+                  >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-base font-semibold dashboard-title">{s.title}</div>
-                        <div className="text-xs dashboard-subtext">/{s.slug}</div>
-
-                        <div className="mt-2 text-xs dashboard-subtext">
-                          Postęp: <b>{s.stats.percent}%</b>
-                          {s.stats.totalIslands ? (
-                            <span className="ml-2 dashboard-subtext">
-                              ({s.stats.completedIslands}/{s.stats.totalIslands} wysp)
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="text-base font-bold dashboard-title">{s.title}</div>
+                          {state === 'done' && (
+                            <span className="inline-flex items-center">
+                              <CheckIcon state="done" size={18} />
                             </span>
-                          ) : null}
+                          )}
+                        </div>
+                        <div className="text-xs dashboard-subtext text-gray-500">/{s.slug}</div>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center justify-between text-xs dashboard-subtext">
+                            <span>Postęp</span>
+                            <span className="font-bold">{s.stats.percent}%</span>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
+                            <div 
+                              className="h-2 rounded-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500 ease-out"
+                              style={{ width: `${s.stats.percent}%` }}
+                            />
+                          </div>
+                          {s.stats.totalIslands > 0 && (
+                            <div className="text-xs dashboard-subtext text-gray-600">
+                              🏝️ Wyspy: {s.stats.completedIslands}/{s.stats.totalIslands}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -278,27 +297,22 @@ export default function DashboardPage() {
                           </span>
                         )}
 
-                        {/* requested labels + check visuals */}
-                        {state === 'in_progress' ? (
-                          <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
-                            <CheckIcon state="in_progress" size={18} />
-                            W trakcie
+                        {state === 'in_progress' && (
+                          <div className="flex items-center gap-1 text-xs font-semibold text-green-700">
+                            <CheckIcon state="in_progress" size={16} />
+                            <span>W trakcie</span>
                           </div>
-                        ) : state === 'done' ? (
-                          <div className="flex items-center gap-2 text-xs font-semibold text-green-800">
-                            <CheckIcon state="done" size={18} />
-                            Ukończone
-                          </div>
-                        ) : null}
+                        )}
                       </div>
                     </div>
 
-                    <div className="mt-3">
+                    <div className="mt-4">
                       <Link
                         href={`/courses/${courseId}/sections/${s.slug}`}
-                        className="inline-block rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900 open-path-box"
+                        className="inline-flex items-center gap-2 rounded-xl border border-gray-900 bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 transition-colors open-path-box"
                       >
-                        Otwórz ścieżkę
+                        <span>Otwórz ścieżkę</span>
+                        <span>→</span>
                       </Link>
                     </div>
                   </li>
