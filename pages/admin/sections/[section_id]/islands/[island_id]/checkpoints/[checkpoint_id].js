@@ -654,7 +654,7 @@ if (!secErr && secRow?.course_id) {
                 </label>
 
                 <label className="mt-3 block">
-                  <div className="text-xs font-semibold text-gray-600">description</div>
+                  <div className="text-xs font-semibold text-gray-600">Opis</div>
                   <textarea
                     className="mt-1 min-h-[60px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
                     value={create.description}

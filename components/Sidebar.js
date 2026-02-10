@@ -97,7 +97,7 @@ export default function Sidebar() {
               <div className="font-medium text-gray-800 ui-surface">{email ?? '—'}</div>
               <div className="text-xs text-gray-500">{email ? 'Zalogowany' : 'Niezalogowany'}</div>
             </div>
-          </div>
+          </div> 
 
           <div className="mt-3">
             {email ? (
