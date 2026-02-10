@@ -397,3 +397,19 @@ html::after {
     background-repeat: no-repeat !important;
   }
 }
+@keyframes shake-x {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+}
+
+.exercise-card--correct {
+  border-color: #16a34a !important;
+}
+
+.exercise-card--wrong {
+  border-color: #dc2626 !important;
+  animation: shake-x 0.4s ease-in-out;
+}

@@ -47,6 +47,33 @@ function getAbcdOptionsFromAnswerKey(answerKey) {
     D: opts.D ?? '',
   };
 }
+function normalizeNumeric(val) {
+  if (val === null || val === undefined) return null;
+  const s = String(val).trim().replace(',', '.');
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isNaN(n) ? null : n;
+}
+
+function getImmediateResult(ex, answer) {
+  if (!ex || !answer) return { is_correct: false, points_awarded: 0 };
+
+  if (ex.answer_type === 'abcd') {
+    const correct = String(ex.answer_key?.correct || '').trim().toUpperCase();
+    const choice = String(answer?.choice || '').trim().toUpperCase();
+    const ok = Boolean(choice) && choice === correct;
+    return { is_correct: ok, points_awarded: ok ? Number(ex.points_max ?? 0) : 0 };
+  }
+
+  if (ex.answer_type === 'numeric') {
+    const correct = normalizeNumeric(ex.answer_key?.value);
+    const val = normalizeNumeric(answer?.value);
+    const ok = val !== null && correct !== null && val === correct;
+    return { is_correct: ok, points_awarded: ok ? Number(ex.points_max ?? 0) : 0 };
+  }
+
+  return { is_correct: false, points_awarded: 0 };
+}
 
 function CheckIcon({ done, size = 18, className = '' }) {
   if (done) {
@@ -95,6 +122,7 @@ export default function IslandPage() {
 
   const [answers, setAnswers] = useState({});
   const [saved, setSaved] = useState({});
+  const [flashById, setFlashById] = useState({});
   const [results, setResults] = useState({});
   const [submittingTest, setSubmittingTest] = useState(false);
   const [testResult, setTestResult] = useState(null);
@@ -157,11 +185,11 @@ export default function IslandPage() {
     return empty;
   }
 
-  const { data, error } = await supabase
-    .from('island_item_progress')
-    .select('island_item_id, is_completed, points_earned')
-    .eq('user_id', sessionUserId)
-    .in('island_item_id', itemIds);
+      const { data, error } = await supabase
+      .from('island_item_progress')
+      .select('island_item_id, is_completed, points_earned, last_answer')
+      .eq('user_id', sessionUserId)
+      .in('island_item_id', itemIds);
 
   if (error) {
     setMsg((prev) => (prev ? prev + ' ' : '') + `Progress load failed: ${error.message}`);
@@ -170,14 +198,15 @@ export default function IslandPage() {
     return empty;
   }
 
-  const map = {};
-  for (const row of data || []) {
-    map[String(row.island_item_id)] = {
-      is_completed: Boolean(row.is_completed),
-      points_earned: Number(row.points_earned || 0),
-    };
-  }
-  setProgressByItemId(map);
+      const map = {};
+    for (const row of data || []) {
+      map[row.island_item_id] = {
+        is_completed: Boolean(row.is_completed),
+        points_earned: Number(row.points_earned || 0),
+        last_answer: row.last_answer || null,
+      };
+    }
+    setProgressByItemId(map);
   return map;
 }
 
@@ -702,8 +731,17 @@ function goNextCheckpoint() {
               }
 
               const ex = it.exercise;
-              const exId = ex?.id;
-              const a = exId ? answers[exId] || {} : {};
+const exId = ex?.id;
+
+const progress = progressByItemId[String(it.id)] || {};
+const persistedAnswer = progress.last_answer || {};
+const a = exId
+  ? (answers[exId] && Object.keys(answers[exId]).length ? answers[exId] : persistedAnswer)
+  : {};
+
+const itemCompleted = Boolean(progress.is_completed);
+const showCorrectState = !isTest && (itemCompleted || results[exId]?.is_correct === true);
+const flashState = flashById[exId];
 
               const qRes = exId ? resultByExerciseId.get(exId) : null;
               const showGradingInCard = isTest && Boolean(testResult) && Boolean(qRes);
@@ -727,10 +765,18 @@ function goNextCheckpoint() {
               const hints = Array.isArray(ex?.hints) ? ex.hints : [];
               const abcdOptions = getAbcdOptionsFromAnswerKey(ex?.answer_key);
 
-              const itemCompleted = Boolean(progressByItemId[String(it.id)]?.is_completed);
+              
 
               return (
-                <div key={it.id} className={`rounded-2xl border p-4 ${cardStyle}`}>
+                <div
+  key={it.id}
+  className={[
+    'rounded-2xl border p-4',
+    cardStyle,
+    showCorrectState ? 'exercise-card--correct' : '',
+    flashState === 'wrong' ? 'exercise-card--wrong' : '',
+  ].join(' ')}
+>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
                       {!isTest ? <CheckIcon done={itemCompleted} size={20} className="mt-0.5" /> : null}
@@ -831,23 +877,24 @@ function goNextCheckpoint() {
                   <div className="mt-3">
                     {ex?.answer_type === 'numeric' ? (
                       <input
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
-                        placeholder="Wpisz odpowiedź (liczba)"
-                        value={a.value || ''}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setAnswers((prev) => ({
-                            ...prev,
-                            [exId]: { ...(prev[exId] || {}), value },
-                          }));
-                          if (isTest && session) scheduleSave(exId, { value });
-                        }}
-                        onBlur={() => {
-                          if (!isTest) return;
-                          const value = (answers[exId]?.value ?? '').toString();
-                          if (session) scheduleSave(exId, { value }, 0);
-                        }}
-                      />
+  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-60"
+  placeholder="Wpisz odpowiedź (liczba)"
+  value={a.value || ''}
+  disabled={showCorrectState}
+  onChange={(e) => {
+    const value = e.target.value;
+    setAnswers((prev) => ({
+      ...prev,
+      [exId]: { ...(prev[exId] || {}), value },
+    }));
+    if (isTest && session) scheduleSave(exId, { value });
+  }}
+  onBlur={() => {
+    if (!isTest) return;
+    const value = (answers[exId]?.value ?? '').toString();
+    if (session) scheduleSave(exId, { value }, 0);
+  }}
+/>
                     ) : ex?.answer_type === 'abcd' ? (
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {['A', 'B', 'C', 'D'].map((opt) => {
@@ -856,34 +903,37 @@ function goNextCheckpoint() {
 
                           return (
                             <button
-                              key={opt}
-                              type="button"
-                              className={[
-                                'rounded-xl border px-3 py-2 text-left text-sm font-semibold',
-                                selected
-                                  ? 'border-gray-900 bg-gray-900 text-white'
-                                  : 'border-gray-300 bg-white text-gray-900',
-                              ].join(' ')}
-                              onClick={() => {
-                                const prevChoice = (answers?.[exId]?.choice || '').toUpperCase();
-                                const nextChoice = prevChoice === opt ? '' : opt;
+  key={opt}
+  type="button"
+  disabled={showCorrectState}
+  className={[
+    'rounded-xl border px-3 py-2 text-left text-sm font-semibold',
+    selected
+      ? showCorrectState
+        ? 'border-green-700 bg-green-700 text-white'
+        : 'border-gray-900 bg-gray-900 text-white'
+      : 'border-gray-300 bg-white text-gray-900',
+  ].join(' ')}
+  onClick={() => {
+    const prevChoice = (answers?.[exId]?.choice || '').toUpperCase();
+    const nextChoice = prevChoice === opt ? '' : opt;
 
-                                setAnswers((prev) => ({
-                                  ...prev,
-                                  [exId]: { ...(prev[exId] || {}), choice: nextChoice },
-                                }));
+    setAnswers((prev) => ({
+      ...prev,
+      [exId]: { ...(prev[exId] || {}), choice: nextChoice },
+    }));
 
-                                if (isTest) {
-                                  if (session) {
-                                    saveAttempt(exId, { choice: nextChoice }, { storeResult: false });
-                                  } else {
-                                    setMsg('Musisz się zalogować, aby zapisać odpowiedzi.');
-                                  }
-                                }
-                              }}
-                            >
-                              {labelText}
-                            </button>
+    if (isTest) {
+      if (session) {
+        saveAttempt(exId, { choice: nextChoice }, { storeResult: false });
+      } else {
+        setMsg('Musisz się zalogować, aby zapisać odpowiedzi.');
+      }
+    }
+  }}
+>
+  {labelText}
+</button>
                           );
                         })}
                       </div>
@@ -909,37 +959,32 @@ function goNextCheckpoint() {
                   ) : null}
 
                   {!isTest && (ex?.answer_type === 'numeric' || ex?.answer_type === 'abcd') ? (
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-xs text-gray-600">
-                        Punkty: {ex?.points_max ?? 0}
-                        {results[exId] ? (
-                          <span className="ml-2 font-semibold">
-                            • {results[exId].is_correct ? '✅ poprawnie' : '❌ błędnie'} (+{results[exId].points_awarded})
-                          </span>
-                        ) : null}
-                      </div>
+  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    {!showCorrectState ? (
+  <button
+    type="button"
+    className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => {
+      const immediate = getImmediateResult(ex, answers[exId] || {});
+      setResults((prev) => ({ ...prev, [exId]: immediate }));
 
-                      <button
-                        type="button"
-                        className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                        onClick={() => {
-                          if (!session) {
-                            setMsg('Zaloguj się, aby sprawdzać i zapisywać odpowiedzi.');
-                            return;
-                          }
-                          saveAttempt(exId, answers[exId] || {}, { storeResult: true });
-                        }}
-                        disabled={!session}
-                      >
-                        Sprawdź
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="mt-3 text-xs text-gray-600">
-                      Punkty: {ex?.points_max ?? 0}
-                      {isTest && saved[exId] ? <span className="ml-2 font-semibold">• zapisano</span> : null}
-                    </div>
-                  )}
+      if (!immediate.is_correct) {
+        setFlashById((prev) => ({ ...prev, [exId]: 'wrong' }));
+        setTimeout(() => {
+          setFlashById((prev) => ({ ...prev, [exId]: null }));
+        }, 700);
+      } else {
+        setFlashById((prev) => ({ ...prev, [exId]: null }));
+      }
+
+      saveAttempt(exId, answers[exId] || {}, { storeResult: true });
+    }}
+  >
+    Sprawdź
+  </button>
+) : null}
+  </div>
+) : null}
                 </div>
               );
             })

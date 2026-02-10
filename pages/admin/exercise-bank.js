@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import AdminGate from '../../components/admin/AdminGate';
@@ -49,6 +49,40 @@ function getKeyForExercise(ex, keyObj) {
     kind: 'numeric',
     value: keyObj?.value ?? '',
   };
+}
+const MATH_SYMBOLS = ['√', 'π', 'Δ', '±', '≤', '≥', '≠', '≈', '∞', '∑', '∫', '°', '×', '÷', '→', '←', 'a/b'];
+
+function insertAtCursor(value, el, insertText) {
+  const start = el?.selectionStart ?? value.length;
+  const end = el?.selectionEnd ?? value.length;
+  const next = value.slice(0, start) + insertText + value.slice(end);
+  const pos = start + insertText.length;
+  return { next, pos };
+}
+
+function focusAndSetCaret(el, pos) {
+  requestAnimationFrame(() => {
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(pos, pos);
+  });
+}
+
+function MathKeyboard({ onInsert }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {MATH_SYMBOLS.map((sym) => (
+        <button
+          key={sym}
+          type="button"
+          className="rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+          onClick={() => onInsert(sym)}
+        >
+          {sym}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ---------------- BULK HELPERS ----------------
@@ -266,6 +300,35 @@ export default function AdminExerciseBank() {
     use_in_generator: true,
     use_in_minigame: true,
   });
+  const createPromptRef = useRef(null);
+const createNumericRef = useRef(null);
+const createOptionRefs = useRef({ A: null, B: null, C: null, D: null });
+const [createActiveAnswer, setCreateActiveAnswer] = useState('A');
+
+function insertIntoCreatePrompt(symbol) {
+  const el = createPromptRef.current;
+  const { next, pos } = insertAtCursor(create.prompt, el, symbol);
+  setCreate((p) => ({ ...p, prompt: next }));
+  focusAndSetCaret(el, pos);
+}
+
+function insertIntoCreateAnswer(symbol) {
+  if (create.answer_type === 'numeric') {
+    const el = createNumericRef.current;
+    const { next, pos } = insertAtCursor(create.correct_numeric, el, symbol);
+    setCreate((p) => ({ ...p, correct_numeric: next }));
+    focusAndSetCaret(el, pos);
+    return;
+  }
+
+  const key = createActiveAnswer || 'A';
+  const fieldMap = { A: 'optionsA', B: 'optionsB', C: 'optionsC', D: 'optionsD' };
+  const field = fieldMap[key] || 'optionsA';
+  const el = createOptionRefs.current[key];
+  const { next, pos } = insertAtCursor(create[field] || '', el, symbol);
+  setCreate((p) => ({ ...p, [field]: next }));
+  focusAndSetCaret(el, pos);
+}
 
   // Editor state (Save button)
   const [editById, setEditById] = useState({});
@@ -963,11 +1026,13 @@ export default function AdminExerciseBank() {
               <label className="mt-3 block">
                 <div className="text-xs font-semibold text-gray-600">Question (prompt)</div>
                 <textarea
-                  className="mt-1 min-h-[120px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                  value={create.prompt}
-                  onChange={(e) => setCreate((p) => ({ ...p, prompt: e.target.value }))}
-                />
+  ref={createPromptRef}
+  className="mt-1 min-h-[120px] w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+  value={create.prompt}
+  onChange={(e) => setCreate((p) => ({ ...p, prompt: e.target.value }))}
+ />
               </label>
+              <MathKeyboard onInsert={insertIntoCreatePrompt} />
 
               <label className="mt-3 block">
                 <div className="text-xs font-semibold text-gray-600">description (optional)</div>
@@ -1034,31 +1099,35 @@ export default function AdminExerciseBank() {
                       <div key={opt} className="grid grid-cols-[40px_1fr_110px] items-center gap-2">
                         <div className="text-sm font-semibold text-gray-800">{opt}</div>
                         <input
-                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                          placeholder={`Treść odpowiedzi ${opt}`}
-                          value={
-                            opt === 'A'
-                              ? create.optionsA
-                              : opt === 'B'
-                                ? create.optionsB
-                                : opt === 'C'
-                                  ? create.optionsC
-                                  : create.optionsD
-                          }
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setCreate((p) => ({
-                              ...p,
-                              ...(opt === 'A'
-                                ? { optionsA: v }
-                                : opt === 'B'
-                                  ? { optionsB: v }
-                                  : opt === 'C'
-                                    ? { optionsC: v }
-                                    : { optionsD: v }),
-                            }));
-                          }}
-                        />
+  ref={(el) => {
+    createOptionRefs.current[opt] = el;
+  }}
+  className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+  placeholder={`Treść odpowiedzi ${opt}`}
+  value={
+    opt === 'A'
+      ? create.optionsA
+      : opt === 'B'
+        ? create.optionsB
+        : opt === 'C'
+          ? create.optionsC
+          : create.optionsD
+  }
+  onFocus={() => setCreateActiveAnswer(opt)}
+  onChange={(e) => {
+    const v = e.target.value;
+    setCreate((p) => ({
+      ...p,
+      ...(opt === 'A'
+        ? { optionsA: v }
+        : opt === 'B'
+          ? { optionsB: v }
+          : opt === 'C'
+            ? { optionsC: v }
+            : { optionsD: v }),
+    }));
+  }}
+/>
                         <button
                           type="button"
                           className={[
@@ -1076,14 +1145,16 @@ export default function AdminExerciseBank() {
                   </div>
                 ) : (
                   <input
-                    className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="Poprawna odpowiedź (np. 12)"
-                    value={create.correct_numeric}
-                    onChange={(e) => setCreate((p) => ({ ...p, correct_numeric: e.target.value }))}
-                  />
+  ref={createNumericRef}
+  className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm"
+  placeholder="Poprawna odpowiedź (np. 12)"
+  value={create.correct_numeric}
+  onFocus={() => setCreateActiveAnswer('numeric')}
+  onChange={(e) => setCreate((p) => ({ ...p, correct_numeric: e.target.value }))}
+ />
                 )}
               </div>
-
+<MathKeyboard onInsert={insertIntoCreateAnswer} />
               <label className="mt-3 block">
                 <div className="text-xs font-semibold text-gray-600">image_url (optional)</div>
                 <input

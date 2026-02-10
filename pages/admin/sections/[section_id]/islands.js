@@ -115,6 +115,31 @@ export default function AdminSectionIslands() {
     }
     await load();
   }
+    async function deleteIsland(islandId) {
+    setMsg('');
+
+    const { count, error: countErr } = await supabase
+      .from('island_items')
+      .select('id', { count: 'exact' })
+      .eq('island_id', islandId);
+
+    if (countErr) {
+      setMsg(countErr.message);
+      return;
+    }
+
+    const taskCount = count || 0;
+    const ok = window.confirm(`Na pewno usunąć wyspę? Znajduje się w niej ${taskCount} zadań.`);
+    if (!ok) return;
+
+    const { error } = await supabase.from('islands').delete().eq('id', islandId);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    await load();
+  }
 
   return (
     <AdminGate>
@@ -253,15 +278,23 @@ export default function AdminSectionIslands() {
                       </label>
                     </div>
 
-                    <div className="mt-4">
-                      <button
-                        type="button"
-                        className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
-                        onClick={() => saveIsland(isl.id)}
-                      >
-                        Zapisz wyspę
-                      </button>
-                    </div>
+                    <div className="mt-4 flex items-center justify-end gap-2">
+  <button
+    type="button"
+    className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => saveIsland(isl.id)}
+  >
+    Zapisz wyspę
+  </button>
+
+  <button
+    type="button"
+    className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => deleteIsland(isl.id)}
+  >
+    Usuń wyspę
+  </button>
+</div>
                   </div>
                 );
               })}

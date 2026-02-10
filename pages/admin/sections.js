@@ -123,6 +123,33 @@ export default function AdminSections() {
     }
     await load();
   }
+    async function deleteSection(sectionId) {
+    setMsg('');
+     console.log('sectionId for delete:', sectionId);
+
+    const { count, error: countErr } = await supabase
+  .from('exercises')
+  .select('id', { count: 'exact' })
+  .eq('topic_section_id', String(sectionId));
+
+    if (countErr) {
+      setMsg(countErr.message);
+      return;
+    }
+
+    const exerciseCount = count || 0;
+    console.log('sectionId', sectionId);
+    const ok = window.confirm(`Na pewno usunąć sekcję? Znajduje się w niej ${exerciseCount} zadań.`);
+    if (!ok) return;
+
+    const { error } = await supabase.from('sections').delete().eq('id', sectionId);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    await load();
+  }
 
   return (
     <AdminGate>
@@ -169,12 +196,15 @@ export default function AdminSections() {
                         </div>
                       </div>
 
-                      <Link
-                        href={`/admin/sections/${s.id}/islands`}
-                        className="rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900"
-                      >
-                        Zarządzaj wyspami →
-                      </Link>
+                      <div className="flex flex-wrap items-center gap-2">
+  <Link
+  href={`/admin/sections/${s.id}/islands`}
+  className="rounded-xl border border-gray-900 bg-white px-4 py-2 text-sm font-semibold text-gray-900"
+>
+  Zarządzaj wyspami →
+</Link>
+
+</div>
                     </div>
 
                     <div className="mt-4 grid gap-3 sm:grid-cols-6">
@@ -287,15 +317,23 @@ export default function AdminSections() {
                       </label>
                     </div>
 
-                    <div className="mt-4">
-                      <button
-                        type="button"
-                        className="rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-2 text-sm font-semibold text-white"
-                        onClick={() => saveSection(s.id)}
-                      >
-                        Zapisz
-                      </button>
-                    </div>
+                    <div className="mt-4 flex items-center justify-end gap-2">
+  <button
+    type="button"
+    className="rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => saveSection(s.id)}
+  >
+    Zapisz
+  </button>
+
+  <button
+    type="button"
+    className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => deleteSection(s.id)}
+  >
+    Usuń sekcję
+  </button>
+</div>
                   </div>
                 );
               })}

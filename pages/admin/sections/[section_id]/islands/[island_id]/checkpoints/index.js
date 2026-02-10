@@ -104,6 +104,31 @@ export default function AdminIslandCheckpoints() {
     }
     await load();
   }
+    async function deleteCheckpoint(checkpointId) {
+    setMsg('');
+
+    const { count, error: countErr } = await supabase
+      .from('island_checkpoint_items')
+      .select('id', { count: 'exact' })
+      .eq('checkpoint_id', checkpointId);
+
+    if (countErr) {
+      setMsg(countErr.message);
+      return;
+    }
+
+    const taskCount = count || 0;
+    const ok = window.confirm(`Na pewno usunąć checkpoint? Znajduje się w nim ${taskCount} zadań.`);
+    if (!ok) return;
+
+    const { error } = await supabase.from('island_checkpoints').delete().eq('id', checkpointId);
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    await load();
+  }
 
   return (
     <AdminGate>
@@ -206,15 +231,23 @@ export default function AdminIslandCheckpoints() {
                       </label>
                     </div>
 
-                    <div className="mt-4">
-                      <button
-                        type="button"
-                        className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
-                        onClick={() => saveCheckpoint(cp.id)}
-                      >
-                        Zapisz checkpoint
-                      </button>
-                    </div>
+                    <div className="mt-4 flex items-center justify-end gap-2">
+  <button
+    type="button"
+    className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => saveCheckpoint(cp.id)}
+  >
+    Zapisz checkpoint
+  </button>
+
+  <button
+    type="button"
+    className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-semibold text-white"
+    onClick={() => deleteCheckpoint(cp.id)}
+  >
+    Usuń checkpoint
+  </button>
+</div>
                   </div>
                 );
               })}
