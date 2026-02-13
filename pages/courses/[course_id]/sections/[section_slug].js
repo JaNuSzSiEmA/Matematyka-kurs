@@ -249,10 +249,10 @@ const exerciseItems = (items || [])
       <div className="mx-auto max-w-3xl p-6">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <Link href="/dashboard" className="text-sm section-title font-semibold text-gray-700 ">
+            <Link href="/dashboard" className="text-sm section-title font-semibold text-white ">
               ← Panel
             </Link>
-            <h1 className=" text-2xl font-bold section-title text-gray-900 p-3 rounded-xl ">{section?.title}</h1>
+            <h1 className=" text-2xl font-bold section-title text-white p-3 rounded-xl ">{section?.title}</h1>
           </div>
 
           {section?.is_free ? (
@@ -294,13 +294,28 @@ const exerciseItems = (items || [])
             const st = islandStatsById[island.id] || { totalExercises: 0, completedExercises: 0, earnedPoints: 0, maxPoints: 0, state: 'none' };
             const pct = st.maxPoints > 0 ? clampPct((st.earnedPoints / st.maxPoints) * 100) : 0;
 
-            const cardBase = st.state === 'done' ? 'border-green-200 island-surface' : st.state === 'in_progress' ? 'border-green-200 island-surface' : 'border-gray-200 island-surface';
+            const cardBase =
+  st.state === 'done'
+    ? 'border-4 border-green-600 ring-1 ring-green-500/40 island-surface'
+    : st.state === 'in_progress'
+      ? 'border-green-200 island-surface'
+      : 'border-gray-200 island-surface';
             const finalCardClass = isTest ? 'border-indigo-300 island-surface' : cardBase;
             const islandHref = `/courses/${course_id}/islands/${island.id}`;
 
             return (
               <div key={island.id} className={`flex ${zigZag(idx)}`}>
-                <Link href={islandHref} className={['w-full max-w-sm rounded-3xl border p-5 shadow-sm transition', 'hover:shadow-md', finalCardClass].join(' ')}>
+                <Link
+  href={islandHref}
+  className={[
+    'w-full max-w-sm rounded-3xl border p-5 shadow-sm transition',
+    'hover:shadow-md',
+    'bg-white',
+    'island-card-animate',
+    finalCardClass,
+  ].join(' ')}
+  style={{ animationDelay: `${idx * 60}ms` }}
+>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-xs font-semibold text-gray-500">{isTest ? 'TEST (6 zadań)' : `WYSPA ${island.order_index}`}</div>

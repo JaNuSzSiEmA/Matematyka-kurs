@@ -19,16 +19,16 @@
 
   /* Dashboard / card defaults */
   --dashboard-card-bg: #ffffff;
-  --dashboard-card-border: #e5e7eb; /* gray-200 */
-  --dashboard-card-text: #06121a;
+  --dashboard-card-border: #eaeceb; /* gray-200 */
+  --dashboard-card-text: #081a06;
 
   /* State-specific vars (light) */
   --dashboard-card-done-bg: #dcfce7; /* light green surface */
-  --dashboard-card-done-border: #16a34a; /* green */
+  --dashboard-card-done-border: #32bb3e; /* green */
   --dashboard-card-done-text: #064e3b; /* default done text in light mode */
 
   --dashboard-card-inprogress-bg: #ffffff;
-  --dashboard-card-inprogress-border: #86efac;
+  --dashboard-card-inprogress-border: #d6d6d6;
 
   /* Progress bar defaults */
   --progress-bg: #f3f4f6;   /* light gray background for bar in light mode */
@@ -412,4 +412,24 @@ html::after {
 .exercise-card--wrong {
   border-color: #dc2626 !important;
   animation: shake-x 0.4s ease-in-out;
+}
+@keyframes island-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.island-card-animate {
+  animation: island-slide-in 0.45s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .island-card-animate {
+    animation: none;
+  }
 }

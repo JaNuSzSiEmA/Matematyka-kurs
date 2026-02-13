@@ -317,7 +317,7 @@ const exerciseItemIds = exerciseItems.map((it) => it.id);
             <div className="mt-4 text-sm text-red-700">{msg}</div>
           ) : (
             <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 items-stretch">
-              {sectionsWithStats.map((s) => {
+              {sectionsWithStats.map((s, idx) => {
                 const state = s.stats.state;
 
                 // state-based modifier class (uses CSS variables in globals.css)
@@ -329,10 +329,11 @@ const exerciseItemIds = exerciseItems.map((it) => it.id);
                 return (
                   <li key={s.id} className="h-full">
                     <Link
-                      href={href}
-                      aria-label={ariaLabel}
-                      className={`block rounded-2xl border p-4 dashboard-card ${stateClass} cursor-pointer transform transition duration-150 ease-out hover:-translate-y-1 hover:shadow-lg active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-400 h-full flex flex-col`}
-                    >
+  href={href}
+  aria-label={ariaLabel}
+  className={`block rounded-2xl border-4 p-4 dashboard-card ${stateClass} cursor-pointer transform transition duration-150 ease-out hover:-translate-y-1 hover:shadow-lg active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-400 h-full flex flex-col island-card-animate`}
+  style={{ animationDelay: `${idx * 60}ms` }}
+>
                       <div className="flex-1 flex items-start justify-between gap-3">
                         <div className="flex-1">
                           <div className="text-base font-semibold dashboard-title">{s.title}</div>

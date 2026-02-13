@@ -550,7 +550,7 @@ setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="min-h-screen">
         <div className="mx-auto max-w-3xl p-6 text-sm text-gray-700">Ładowanie…</div>
       </div>
     );
@@ -597,8 +597,9 @@ function goNextCheckpoint() {
 }
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-3xl p-6">
+  <div className="min-h-screen">
+    <div className="bg-white">
+      <div className="mx-auto max-w-3xl p-6 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div>
             <Link href={backHref} className="text-sm font-semibold text-gray-700 underline">
@@ -615,33 +616,34 @@ function goNextCheckpoint() {
           </div>
 
           <div className="flex items-center gap-3">
-  {islandCompleted && nextIsland ? (
-    <Link
-      href={`/courses/${course_id}/islands/${nextIsland.id}`}
-      className="rounded-full border border-green-700 bg-green-700 px-3 py-1 text-xs font-semibold text-white"
-    >
-      Następna wyspa →
-    </Link>
-  ) : null}
+            {islandCompleted && nextIsland ? (
+              <Link
+                href={`/courses/${course_id}/islands/${nextIsland.id}`}
+                className="rounded-full border border-green-700 bg-green-700 px-3 py-1 text-xs font-semibold text-white"
+              >
+                Następna wyspa →
+              </Link>
+            ) : null}
 
-  {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
+            {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
 
-  <span
-    className={[
-      'h-fit rounded-full px-3 py-1 text-xs font-semibold',
-      isTest ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800',
-    ].join(' ')}
-  >
-    {isTest ? 'TEST' : 'NORMAL'}
-  </span>
-</div>
+            <span
+              className={[
+                'h-fit rounded-full px-3 py-1 text-xs font-semibold',
+                isTest ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800',
+              ].join(' ')}
+            >
+              {isTest ? 'TEST' : 'NORMAL'}
+            </span>
+          </div>
         </div>
+      </div>
+    </div>
 
-        
-
-        {!isTest && checkpoints.length > 0 ? (
-  <div className="sticky top-0 z-20 -mx-6 bg-white/95 backdrop-blur border-b border-gray-100">
-    <div className="mx-auto max-w-3xl px-6 py-3">
+    {!isTest && checkpoints.length > 0 ? (
+      <div className="sticky top-0 z-50 bg-white border-b border-gray-100">
+        <div className="mx-auto max-w-3xl px-6 py-3">
+  
     <div className="relative flex items-center gap-3">
       <button
         type="button"
@@ -701,11 +703,14 @@ function goNextCheckpoint() {
   </div>
   </div>
 ) : null}
-        {msg ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
-        ) : null}
 
-        <div className="mt-6 space-y-4">
+
+<div className="mx-auto max-w-3xl p-6">
+  {msg ? (
+    <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
+  ) : null}
+
+  <div className="mt-6 space-y-4">
           {items.length === 0 ? (
             <div className="rounded-2xl border border-gray-200 p-4 text-sm text-gray-700">
               Brak elementów w tym checkpointcie.
