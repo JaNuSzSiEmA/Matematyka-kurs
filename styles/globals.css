@@ -407,11 +407,13 @@ html::after {
 
 .exercise-card--correct {
   border-color: #16a34a !important;
+  border-width: 3px !important;
 }
 
 .exercise-card--wrong {
   border-color: #dc2626 !important;
   animation: shake-x 0.4s ease-in-out;
+  border-width: 3px !important;
 }
 @keyframes island-slide-in {
   0% {

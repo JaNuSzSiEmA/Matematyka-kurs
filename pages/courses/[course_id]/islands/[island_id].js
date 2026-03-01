@@ -8,6 +8,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
 function toEmbedUrl(youtubeUrl) {
   if (!youtubeUrl) return null;
   try {
@@ -47,6 +49,7 @@ function getAbcdOptionsFromAnswerKey(answerKey) {
     D: opts.D ?? '',
   };
 }
+
 function normalizeNumeric(val) {
   if (val === null || val === undefined) return null;
   const s = String(val).trim().replace(',', '.');
@@ -55,57 +58,66 @@ function normalizeNumeric(val) {
   return Number.isNaN(n) ? null : n;
 }
 
+/**
+ * Oblicza aktualny maksymalny procent punktów możliwych do zdobycia.
+ * Cap dolny: 10%.
+ *
+ * @param {number} wrongAttempts  - liczba unikalnych błędnych prób (max 3 liczymy)
+ * @param {number} hintsUsed      - liczba użytych podpowiedzi
+ * @returns {number} procent od 0 do 100
+ */
+function calcMaxPercent(wrongAttempts, hintsUsed) {
+  const wrongCapped = Math.min(wrongAttempts, 3); // max 3 liczymy
+  const penalty = wrongCapped * 25 + hintsUsed * 15;
+  return Math.max(10, 100 - penalty);
+}
+
 function getImmediateResult(ex, answer) {
-  if (!ex || !answer) return { is_correct: false, points_awarded: 0 };
+  if (!ex || !answer) return { is_correct: false };
 
   if (ex.answer_type === 'abcd') {
     const correct = String(ex.answer_key?.correct || '').trim().toUpperCase();
     const choice = String(answer?.choice || '').trim().toUpperCase();
-    const ok = Boolean(choice) && choice === correct;
-    return { is_correct: ok, points_awarded: ok ? Number(ex.points_max ?? 0) : 0 };
+    return { is_correct: Boolean(choice) && choice === correct };
   }
 
   if (ex.answer_type === 'numeric') {
     const correct = normalizeNumeric(ex.answer_key?.value);
     const val = normalizeNumeric(answer?.value);
-    const ok = val !== null && correct !== null && val === correct;
-    return { is_correct: ok, points_awarded: ok ? Number(ex.points_max ?? 0) : 0 };
+    return { is_correct: val !== null && correct !== null && val === correct };
   }
 
-  return { is_correct: false, points_awarded: 0 };
+  return { is_correct: false };
 }
 
-function CheckIcon({ done, size = 18, className = '' }) {
+// ─── CheckIcon ───────────────────────────────────────────────────────────────
+
+function CheckIcon({ done, gaveUp = false, size = 18, className = '' }) {
+  if (gaveUp) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 20 20" className={className} aria-hidden="true">
+        <circle cx="10" cy="10" r="9" fill="#dc2626" />
+        <path d="M6.5 6.5l7 7M13.5 6.5l-7 7" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" />
+      </svg>
+    );
+  }
   if (done) {
     return (
       <svg width={size} height={size} viewBox="0 0 20 20" className={className} aria-hidden="true">
         <circle cx="10" cy="10" r="9" fill="#16a34a" />
-        <path
-          d="M5.5 10.2l2.6 2.6 6.2-6.2"
-          fill="none"
-          stroke="white"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <path d="M5.5 10.2l2.6 2.6 6.2-6.2" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
-
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" className={className} aria-hidden="true">
       <circle cx="10" cy="10" r="9" fill="white" stroke="#9ca3af" strokeWidth="2" />
-      <path
-        d="M5.5 10.2l2.6 2.6 6.2-6.2"
-        fill="none"
-        stroke="#9ca3af"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+      <path d="M5.5 10.2l2.6 2.6 6.2-6.2" fill="none" stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
+
+// ─── Main component ──────────────────────────────────────────────────────────
 
 export default function IslandPage() {
   const router = useRouter();
@@ -115,8 +127,6 @@ export default function IslandPage() {
   const [msg, setMsg] = useState('');
 
   const [island, setIsland] = useState(null);
-
-  // ✅ NOWE: checkpointy
   const [checkpoints, setCheckpoints] = useState([]);
   const [activeCheckpointId, setActiveCheckpointId] = useState(null);
 
@@ -133,15 +143,19 @@ export default function IslandPage() {
   const [sectionSlug, setSectionSlug] = useState(null);
   const [sectionTitle, setSectionTitle] = useState(null);
 
-  const [showHintsByExerciseId, setShowHintsByExerciseId] = useState({});
-  const [showExplanationByExerciseId, setShowExplanationByExerciseId] = useState({});
+  // hints: { [exId]: number } — ile podpowiedzi aktualnie odkrytych w UI
+  const [revealedHintsByExId, setRevealedHintsByExId] = useState({});
 
+  const [showExplanationByExerciseId, setShowExplanationByExerciseId] = useState({});
+  const [gaveUpByItemId, setGaveUpByItemId] = useState({});
+// lokalny stan błędnych prób numerycznych — klucz to it.id (nie exId!)
+const [wrongNumericByItemId, setWrongNumericByItemId] = useState({});
+const [totalNumericAttemptsByItemId, setTotalNumericAttemptsByItemId] = useState({});
   const saveTimersRef = useRef(new Map());
   const inflightRef = useRef(new Map());
 
   const [progressByItemId, setProgressByItemId] = useState({});
   const [userId, setUserId] = useState(null);
-
   const [session, setSession] = useState(null);
   const [nextIsland, setNextIsland] = useState(null);
 
@@ -166,75 +180,136 @@ export default function IslandPage() {
     return activeCheckpoint?.items || [];
   }, [isTest, activeCheckpoint, allCheckpointItems]);
 
-  const exerciseItems = useMemo(() => allCheckpointItems.filter((it) => it.item_type === 'exercise' && it.exercise?.id), [allCheckpointItems]);
+  const exerciseItems = useMemo(
+    () => allCheckpointItems.filter((it) => it.item_type === 'exercise' && it.exercise?.id),
+    [allCheckpointItems]
+  );
 
-  const completedExerciseItemCount = useMemo(() => {
-    return exerciseItems.filter((it) => Boolean(progressByItemId[String(it.id)]?.is_completed)).length;
-  }, [exerciseItems, progressByItemId]);
+  const completedExerciseItemCount = useMemo(
+    () => exerciseItems.filter((it) => Boolean(progressByItemId[String(it.id)]?.is_completed)).length,
+    [exerciseItems, progressByItemId]
+  );
 
-  const islandCompleted = useMemo(() => {
-    if (exerciseItems.length === 0) return false;
-    return completedExerciseItemCount === exerciseItems.length;
-  }, [exerciseItems.length, completedExerciseItemCount]);
+  const islandCompleted = useMemo(
+    () => exerciseItems.length > 0 && completedExerciseItemCount === exerciseItems.length,
+    [exerciseItems.length, completedExerciseItemCount]
+  );
 
- async function loadProgressForItems(sessionUserId, islandItems) {
-  const itemIds = (islandItems || []).map((it) => it.id);
-  if (!itemIds.length || !sessionUserId) {
-    const empty = {};
-    setProgressByItemId(empty);
-    return empty;
-  }
+  // ─── load progress ─────────────────────────────────────────────────────────
 
-      const { data, error } = await supabase
+  async function loadProgressForItems(sessionUserId, islandItems) {
+    const itemIds = (islandItems || []).map((it) => it.id);
+    if (!itemIds.length || !sessionUserId) {
+      setProgressByItemId({});
+      return {};
+    }
+
+    const { data, error } = await supabase
       .from('island_item_progress')
-      .select('island_item_id, is_completed, points_earned, last_answer')
+      .select('island_item_id, is_completed, points_earned, last_answer, wrong_attempts, hints_used, wrong_choices, wrong_numeric_values')
       .eq('user_id', sessionUserId)
       .in('island_item_id', itemIds);
 
-  if (error) {
-    setMsg((prev) => (prev ? prev + ' ' : '') + `Progress load failed: ${error.message}`);
-    const empty = {};
-    setProgressByItemId(empty);
-    return empty;
-  }
+    if (error) {
+      setMsg((prev) => (prev ? prev + ' ' : '') + `Progress load failed: ${error.message}`);
+      setProgressByItemId({});
+      return {};
+    }
 
-      const map = {};
+    const map = {};
     for (const row of data || []) {
-      map[row.island_item_id] = {
-        is_completed: Boolean(row.is_completed),
-        points_earned: Number(row.points_earned || 0),
-        last_answer: row.last_answer || null,
-      };
+      map[String(row.island_item_id)] = {
+  is_completed: Boolean(row.is_completed),
+  points_earned: Number(row.points_earned || 0),
+  last_answer: row.last_answer || null,
+  wrong_attempts: Number(row.wrong_attempts || 0),
+  hints_used: Number(row.hints_used || 0),
+  wrong_choices: Array.isArray(row.wrong_choices) ? row.wrong_choices : [],
+  wrong_numeric_values: Array.isArray(row.wrong_numeric_values) ? row.wrong_numeric_values : [],
+};
     }
     setProgressByItemId(map);
-  return map;
+    return map;
+  }
+
+  // ─── upsert progress (completion) ─────────────────────────────────────────
+
+ async function upsertCompletionForIslandItem({
+  sessionUserId, islandItemId, pointsEarned, lastAnswer,
+  wrongAttempts, hintsUsed, wrongChoices, wrongNumericValues,
+  gaveUp = false,
+}) {
+  if (!sessionUserId) return false;
+  const { error } = await supabase.from('island_item_progress').upsert(
+    {
+      user_id: sessionUserId,
+      island_item_id: islandItemId,
+      is_completed: true,
+      completed_at: new Date().toISOString(),
+      points_earned: Number(pointsEarned || 0),
+      last_answer: lastAnswer ?? null,
+      wrong_attempts: Number(wrongAttempts || 0),
+      hints_used: Number(hintsUsed || 0),
+      wrong_choices: wrongChoices || [],
+      wrong_numeric_values: wrongNumericValues || [],
+    },
+    { onConflict: 'user_id,island_item_id' }
+  );
+
+  if (error) {
+    setMsg((prev) => (prev ? prev + ' ' : '') + `Progress save failed: ${error.message}`);
+    return false;
+  }
+
+  setProgressByItemId((prev) => ({
+    ...prev,
+    [String(islandItemId)]: {
+      is_completed: true,
+      points_earned: Number(pointsEarned || 0),
+      wrong_attempts: Number(wrongAttempts || 0),
+      hints_used: Number(hintsUsed || 0),
+      wrong_choices: wrongChoices || [],
+      wrong_numeric_values: wrongNumericValues || [],
+      gave_up: gaveUp,
+    },
+  }));
+  return true;
 }
 
-  async function upsertCompletionForIslandItem({ sessionUserId, islandItemId, pointsEarned, lastAnswer }) {
-    if (!sessionUserId) return false;
+  // ─── upsert progress (partial — wrong attempt or hint) ────────────────────
+
+   async function upsertPartialProgress({ sessionUserId, islandItemId, wrongAttempts, hintsUsed, wrongChoices, wrongNumericValues = [] }) {
+    if (!sessionUserId) return;
     const { error } = await supabase.from('island_item_progress').upsert(
       {
         user_id: sessionUserId,
         island_item_id: islandItemId,
-        is_completed: true,
-        completed_at: new Date().toISOString(),
-        points_earned: Number(pointsEarned || 0),
-        last_answer: lastAnswer ?? null,
+        is_completed: false,
+        wrong_attempts: Number(wrongAttempts || 0),
+        hints_used: Number(hintsUsed || 0),
+        wrong_choices: wrongChoices || [],
+        wrong_numeric_values: wrongNumericValues || [],
       },
       { onConflict: 'user_id,island_item_id' }
     );
 
     if (error) {
-      setMsg((prev) => (prev ? prev + ' ' : '') + `Progress save failed: ${error.message}`);
-      return false;
+      setMsg((prev) => (prev ? prev + ' ' : '') + `Partial progress save failed: ${error.message}`);
     }
 
     setProgressByItemId((prev) => ({
       ...prev,
-      [String(islandItemId)]: { is_completed: true, points_earned: Number(pointsEarned || 0) },
+      [String(islandItemId)]: {
+        ...(prev[String(islandItemId)] || {}),
+        wrong_attempts: Number(wrongAttempts || 0),
+        hints_used: Number(hintsUsed || 0),
+        wrong_choices: wrongChoices || [],
+        wrong_numeric_values: wrongNumericValues || [],
+      },
     }));
-    return true;
   }
+
+  // ─── main load effect ──────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!course_id || !island_id) return;
@@ -247,17 +322,18 @@ export default function IslandPage() {
       setSaved({});
       setAnswers({});
       setResults({});
-      setShowHintsByExerciseId({});
+      setRevealedHintsByExId({});
       setShowExplanationByExerciseId({});
       setProgressByItemId({});
+      setGaveUpByItemId({});
+setWrongNumericByItemId({});
+setTotalNumericAttemptsByItemId({});
       setUserId(null);
       setSectionSlug(null);
       setSectionTitle(null);
       setSession(null);
 
-      const {
-        data: { session: sess },
-      } = await supabase.auth.getSession();
+      const { data: { session: sess } } = await supabase.auth.getSession();
       setSession(sess ?? null);
       setUserId(sess?.user?.id ?? null);
 
@@ -267,32 +343,22 @@ export default function IslandPage() {
         .eq('id', island_id)
         .single();
 
-      if (islErr || !isl) {
-        setMsg('Nie znaleziono wyspy.');
-        setLoading(false);
-        return;
-      }
-      if (isl.is_active === false) {
-        setMsg('Ta wyspa jest nieaktywna.');
-        setLoading(false);
-        return;
-      }
+      if (islErr || !isl) { setMsg('Nie znaleziono wyspy.'); setLoading(false); return; }
+      if (isl.is_active === false) { setMsg('Ta wyspa jest nieaktywna.'); setLoading(false); return; }
       setIsland(isl);
-      const { data: nextIsl, error: nextErr } = await supabase
-  .from('islands')
-  .select('id, title, order_index')
-  .eq('section_id', isl.section_id)
-  .eq('is_active', true)
-  .gt('order_index', isl.order_index)
-  .order('order_index', { ascending: true })
-  .limit(1)
-  .maybeSingle();
 
-if (!nextErr && nextIsl) {
-  setNextIsland(nextIsl);
-} else {
-  setNextIsland(null);
-}
+      const { data: nextIsl, error: nextErr } = await supabase
+        .from('islands')
+        .select('id, title, order_index')
+        .eq('section_id', isl.section_id)
+        .eq('is_active', true)
+        .gt('order_index', isl.order_index)
+        .order('order_index', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+      if (!nextErr && nextIsl) setNextIsland(nextIsl);
+      else setNextIsland(null);
 
       const { data: secRules, error: secRulesErr } = await supabase
         .from('sections')
@@ -311,32 +377,12 @@ if (!nextErr && nextIsl) {
 
       const { data: cps, error: cpErr } = await supabase
         .from('island_checkpoints')
-        .select(
-          `
-          id,
-          title,
-          order_index,
-          is_active,
-          items:island_checkpoint_items (
-            id,
-            item_type,
-            order_index,
-            title,
-            youtube_url,
-            exercise_id
-          )
-        `
-        )
+        .select(`id, title, order_index, is_active, items:island_checkpoint_items ( id, item_type, order_index, title, youtube_url, exercise_id )`)
         .eq('island_id', island_id)
         .order('order_index', { ascending: true })
         .order('order_index', { ascending: true, foreignTable: 'items' });
 
-      if (cpErr) {
-        setMsg('Błąd pobierania checkpointów: ' + cpErr.message);
-        setCheckpoints([]);
-        setLoading(false);
-        return;
-      }
+      if (cpErr) { setMsg('Błąd pobierania checkpointów: ' + cpErr.message); setCheckpoints([]); setLoading(false); return; }
 
       const activeCps = (cps || []).filter((c) => c.is_active !== false);
       const allItems = activeCps.flatMap((cp) => cp.items || []);
@@ -351,126 +397,106 @@ if (!nextErr && nextIsl) {
           .select('id, prompt, description, hints, solution_video_url, answer_type, points_max, image_url')
           .in('id', exIds);
 
-        if (exErr) {
-          setMsg('Błąd pobierania zadań: ' + exErr.message);
-        } else {
-          exById = Object.fromEntries((exData || []).map((e) => [e.id, e]));
-        }
+        if (!exErr) exById = Object.fromEntries((exData || []).map((e) => [e.id, e]));
 
         const { data: keyRows, error: keyErr } = await supabase
           .from('exercise_answer_keys')
           .select('exercise_id, answer_key')
           .in('exercise_id', exIds);
 
-        if (keyErr) {
-          setMsg((prev) => (prev ? prev : '') + ' ' + 'Błąd pobierania kluczy: ' + keyErr.message);
-        } else {
-          answerKeyById = Object.fromEntries((keyRows || []).map((k) => [k.exercise_id, k.answer_key]));
-        }
+        if (!keyErr) answerKeyById = Object.fromEntries((keyRows || []).map((k) => [k.exercise_id, k.answer_key]));
       }
 
-      const hydratedCheckpoints =
-        activeCps.map((cp) => ({
-          ...cp,
-          items: (cp.items || []).map((it) => {
-            const ex = it.exercise_id ? exById[it.exercise_id] : null;
-            const answer_key = it.exercise_id ? answerKeyById[it.exercise_id] : null;
-
-            return {
-              ...it,
-              exercise: ex ? { ...ex, answer_key } : null,
-            };
-          }),
-        })) || [];
+      const hydratedCheckpoints = activeCps.map((cp) => ({
+        ...cp,
+        items: (cp.items || []).map((it) => {
+          const ex = it.exercise_id ? exById[it.exercise_id] : null;
+          const answer_key = it.exercise_id ? answerKeyById[it.exercise_id] : null;
+          return { ...it, exercise: ex ? { ...ex, answer_key } : null };
+        }),
+      }));
 
       setCheckpoints(hydratedCheckpoints);
 
-// ✅ najpierw pobierz progress
-const progressMap = await loadProgressForItems(sess?.user?.id, allItems);
+      const progressMap = await loadProgressForItems(sess?.user?.id, allItems);
 
-// ✅ potem wybierz checkpoint wg progresu
-const statusById = hydratedCheckpoints.map((cp) => {
-  const items = cp.items || [];
-  const exerciseItems = items.filter((i) => i.item_type === 'exercise');
-  if (exerciseItems.length === 0) return 'empty';
+      // restore revealed hints from progress
+      const restoredHints = {};
+      for (const cp of hydratedCheckpoints) {
+        for (const it of cp.items || []) {
+          if (it.item_type !== 'exercise' || !it.exercise_id) continue;
+          const prog = progressMap[String(it.id)];
+          if (prog?.hints_used > 0) {
+            restoredHints[it.exercise_id] = prog.hints_used;
+          }
+        }
+      }
+      setRevealedHintsByExId(restoredHints);
 
-  const doneCount = exerciseItems.filter((i) => progressMap[String(i.id)]?.is_completed).length;
-  if (doneCount === 0) return 'future';
-  if (doneCount === exerciseItems.length) return 'done';
-  return 'in_progress';
-});
+      const statusById = hydratedCheckpoints.map((cp) => {
+        const exItems = (cp.items || []).filter((i) => i.item_type === 'exercise');
+        if (exItems.length === 0) return 'empty';
+        const doneCount = exItems.filter((i) => progressMap[String(i.id)]?.is_completed).length;
+        if (doneCount === 0) return 'future';
+        if (doneCount === exItems.length) return 'done';
+        return 'in_progress';
+      });
 
-let nextId = null;
-const firstInProgressIdx = statusById.findIndex((s) => s === 'in_progress');
-if (firstInProgressIdx !== -1) {
-  nextId = hydratedCheckpoints[firstInProgressIdx]?.id || null;
-} else {
-  const firstFutureIdx = statusById.findIndex((s) => s === 'future');
-  nextId = firstFutureIdx !== -1 ? hydratedCheckpoints[firstFutureIdx]?.id : null;
+      let nextId = null;
+      const firstInProgressIdx = statusById.findIndex((s) => s === 'in_progress');
+      if (firstInProgressIdx !== -1) nextId = hydratedCheckpoints[firstInProgressIdx]?.id || null;
+      else {
+        const firstFutureIdx = statusById.findIndex((s) => s === 'future');
+        nextId = firstFutureIdx !== -1 ? hydratedCheckpoints[firstFutureIdx]?.id : null;
+      }
+
+      // restore gave_up — heurystyka: ukończone z 0 pkt i były błędne próby
+const restoredGaveUp = {};
+const restoredWrongNumeric = {};
+for (const cp of hydratedCheckpoints) {
+  for (const it of cp.items || []) {
+    if (it.item_type !== 'exercise') continue;
+    const prog = progressMap[String(it.id)];
+    if (prog?.is_completed && prog.points_earned === 0 && prog.wrong_attempts > 0) {
+      restoredGaveUp[String(it.id)] = true;
+    }
+    if (Array.isArray(prog?.wrong_numeric_values) && prog.wrong_numeric_values.length > 0) {
+      restoredWrongNumeric[String(it.id)] = prog.wrong_numeric_values;
+    }
+  }
 }
+setGaveUpByItemId(restoredGaveUp);
+setWrongNumericByItemId(restoredWrongNumeric);
 
 setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
-
-      setLoading(false);
+setLoading(false);
     })();
   }, [course_id, island_id, router]);
+
+  // ─── save attempt (test mode) ─────────────────────────────────────────────
 
   async function saveAttempt(exerciseId, answer, { storeResult } = { storeResult: false }) {
     if (inflightRef.current.get(exerciseId)) return;
     inflightRef.current.set(exerciseId, true);
 
     try {
-      const {
-        data: { session: sess },
-      } = await supabase.auth.getSession();
-      if (!sess) {
-        router.replace('/login');
-        return;
-      }
+      const { data: { session: sess } } = await supabase.auth.getSession();
+      if (!sess) { router.replace('/login'); return; }
 
       const res = await fetch('/api/exercise-attempt', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sess.access_token}`,
-        },
-        body: JSON.stringify({
-          island_id,
-          exercise_id: exerciseId,
-          answer,
-          time_spent_sec: 0,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sess.access_token}` },
+        body: JSON.stringify({ island_id, exercise_id: exerciseId, answer, time_spent_sec: 0 }),
       });
 
       const json = await res.json();
-      if (!res.ok) {
-        setMsg(json?.error ? `${json.error}${json.details ? `: ${json.details}` : ''}` : 'Save failed');
-        return;
-      }
+      if (!res.ok) { setMsg(json?.error ? `${json.error}${json.details ? `: ${json.details}` : ''}` : 'Save failed'); return; }
 
       setSaved((prev) => ({ ...prev, [exerciseId]: true }));
 
       if (storeResult) {
-        setResults((prev) => ({
-          ...prev,
-          [exerciseId]: { is_correct: json.is_correct, points_awarded: json.points_awarded },
-        }));
-
-        if (json.is_correct) {
-          const islandItem = allCheckpointItems.find((it) => it.item_type === 'exercise' && it.exercise_id === exerciseId);
-          const pts = islandItem?.exercise?.points_max ?? json.points_awarded ?? 0;
-
-          if (islandItem && sess.user?.id) {
-            await upsertCompletionForIslandItem({
-              sessionUserId: sess.user.id,
-              islandItemId: islandItem.id,
-              pointsEarned: pts,
-              lastAnswer: answer,
-            });
-          }
-        }
+        setResults((prev) => ({ ...prev, [exerciseId]: { is_correct: json.is_correct, points_awarded: json.points_awarded } }));
       }
-
       setMsg('');
     } finally {
       inflightRef.current.set(exerciseId, false);
@@ -481,24 +507,179 @@ setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
     const timers = saveTimersRef.current;
     const existing = timers.get(exerciseId);
     if (existing) clearTimeout(existing);
-
     const t = setTimeout(() => {
       timers.delete(exerciseId);
       if (testResult) return;
       saveAttempt(exerciseId, answer, { storeResult: false });
     }, delayMs);
-
     timers.set(exerciseId, t);
   }
 
-  async function reallySubmitTest() {
-    const {
-      data: { session: sess },
-    } = await supabase.auth.getSession();
-    if (!sess) {
-      router.replace('/login');
-      return;
+  // ─── handle check answer (normal mode) ───────────────────────────────────
+
+  async function handleCheck(it) {
+  const ex = it.exercise;
+  const exId = ex?.id;
+  if (!exId) return;
+
+  const currentAnswer = answers[exId] || {};
+  const immediate = getImmediateResult(ex, currentAnswer);
+
+  const prog = progressByItemId[String(it.id)] || {};
+  let wrongAttempts = Number(prog.wrong_attempts || 0);
+  let hintsUsed = Number(prog.hints_used || 0);
+  let wrongChoices = Array.isArray(prog.wrong_choices) ? [...prog.wrong_choices] : [];
+
+  // używamy lokalnego stanu zamiast tylko bazy
+  const localWrongNumeric = wrongNumericByItemId[String(it.id)] || [];
+  let wrongNumericValues = [...localWrongNumeric];
+
+  if (immediate.is_correct) {
+    const maxPct = calcMaxPercent(wrongAttempts, hintsUsed);
+    const pointsEarned = Math.round((maxPct / 100) * Number(ex.points_max ?? 0));
+
+    setResults((prev) => ({ ...prev, [exId]: { is_correct: true, points_awarded: pointsEarned } }));
+    setFlashById((prev) => ({ ...prev, [exId]: null }));
+
+    const sess = session || (await supabase.auth.getSession()).data.session;
+    if (sess?.user?.id) {
+      await upsertCompletionForIslandItem({
+        sessionUserId: sess.user.id,
+        islandItemId: it.id,
+        pointsEarned,
+        lastAnswer: currentAnswer,
+        wrongAttempts,
+        hintsUsed,
+        wrongChoices,
+        wrongNumericValues,
+        gaveUp: false,
+      });
     }
+    await saveAttempt(exId, currentAnswer, { storeResult: false });
+
+  } else {
+    if (ex.answer_type === 'abcd') {
+      const choice = String(currentAnswer?.choice || '').trim().toUpperCase();
+      if (choice && !wrongChoices.includes(choice)) {
+        wrongChoices.push(choice);
+        wrongAttempts = wrongChoices.length;
+      }
+        } else if (ex.answer_type === 'numeric') {
+      const rawVal = String(currentAnswer?.value ?? '').trim();
+      if (rawVal) {
+        // zawsze inkrementuj totalny licznik prób (nawet powtórzenia)
+        setTotalNumericAttemptsByItemId((prev) => ({
+          ...prev,
+          [String(it.id)]: (prev[String(it.id)] || 0) + 1,
+        }));
+
+        if (!wrongNumericValues.includes(rawVal)) {
+          wrongNumericValues.push(rawVal);
+          setWrongNumericByItemId((prev) => ({
+            ...prev,
+            [String(it.id)]: wrongNumericValues,
+          }));
+          if (wrongAttempts < 3) {
+            wrongAttempts += 1;
+          }
+        }
+      }
+    }
+
+    const maxPct = calcMaxPercent(wrongAttempts, hintsUsed);
+    setResults((prev) => ({ ...prev, [exId]: { is_correct: false, points_awarded: 0, maxPct } }));
+    setFlashById((prev) => ({ ...prev, [exId]: 'wrong' }));
+    setTimeout(() => setFlashById((prev) => ({ ...prev, [exId]: null })), 700);
+
+    const sess = session || (await supabase.auth.getSession()).data.session;
+    if (sess?.user?.id) {
+      await upsertPartialProgress({
+        sessionUserId: sess.user.id,
+        islandItemId: it.id,
+        wrongAttempts,
+        hintsUsed,
+        wrongChoices,
+        wrongNumericValues,
+      });
+    }
+    await saveAttempt(exId, currentAnswer, { storeResult: false });
+  }
+}
+
+  // ─── handle reveal hint ────────────────────────────────────────────────────
+
+    async function handleGiveUp(it) {
+    const ex = it.exercise;
+    const exId = ex?.id;
+    if (!exId) return;
+
+    const confirmed = window.confirm(
+      'Czy na pewno chcesz zobaczyć poprawną odpowiedź? Otrzymasz 0 punktów za to zadanie.'
+    );
+    if (!confirmed) return;
+
+    const prog = progressByItemId[String(it.id)] || {};
+    const wrongAttempts = Number(prog.wrong_attempts || 0);
+    const hintsUsed = Number(prog.hints_used || 0);
+    const wrongChoices = Array.isArray(prog.wrong_choices) ? prog.wrong_choices : [];
+    const wrongNumericValues = Array.isArray(prog.wrong_numeric_values) ? prog.wrong_numeric_values : [];
+
+    setGaveUpByItemId((prev) => ({ ...prev, [String(it.id)]: true }));
+    setResults((prev) => ({ ...prev, [exId]: { is_correct: false, points_awarded: 0, gaveUp: true } }));
+
+    const sess = session || (await supabase.auth.getSession()).data.session;
+    if (sess?.user?.id) {
+      await upsertCompletionForIslandItem({
+        sessionUserId: sess.user.id,
+        islandItemId: it.id,
+        pointsEarned: 0,
+        lastAnswer: answers[exId] || null,
+        wrongAttempts,
+        hintsUsed,
+        wrongChoices,
+        wrongNumericValues,
+        gaveUp: true,
+      });
+    }
+  }
+
+    async function handleRevealHint(it) {
+    const ex = it.exercise;
+    const exId = ex?.id;
+    if (!exId) return;
+
+    const hints = Array.isArray(ex?.hints) ? ex.hints : [];
+    const currentRevealed = revealedHintsByExId[exId] || 0;
+    if (currentRevealed >= hints.length) return;
+
+    const newRevealed = currentRevealed + 1;
+    setRevealedHintsByExId((prev) => ({ ...prev, [exId]: newRevealed }));
+
+    const prog = progressByItemId[String(it.id)] || {};
+    const wrongAttempts = Number(prog.wrong_attempts || 0);
+    const hintsUsed = newRevealed;
+    const wrongChoices = Array.isArray(prog.wrong_choices) ? prog.wrong_choices : [];
+    const wrongNumericValues = Array.isArray(prog.wrong_numeric_values) ? prog.wrong_numeric_values : [];
+
+    const sess = session || (await supabase.auth.getSession()).data.session;
+    if (sess?.user?.id) {
+      await upsertPartialProgress({
+        sessionUserId: sess.user.id,
+        islandItemId: it.id,
+        wrongAttempts,
+        hintsUsed,
+        wrongChoices,
+        wrongNumericValues,
+      });
+    }
+  }
+  
+
+  // ─── test submit ───────────────────────────────────────────────────────────
+
+  async function reallySubmitTest() {
+    const { data: { session: sess } } = await supabase.auth.getSession();
+    if (!sess) { router.replace('/login'); return; }
 
     setSubmittingTest(true);
     setMsg('');
@@ -507,18 +688,12 @@ setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
     try {
       const res = await fetch('/api/submit-test', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${sess.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sess.access_token}` },
         body: JSON.stringify({ island_id }),
       });
 
       const json = await res.json();
-      if (!res.ok) {
-        setMsg(json?.error ? `${json.error}${json.details ? `: ${json.details}` : ''}` : 'Submit test failed');
-        return;
-      }
+      if (!res.ok) { setMsg(json?.error ? `${json.error}${json.details ? `: ${json.details}` : ''}` : 'Submit test failed'); return; }
 
       setTestResult(json);
 
@@ -527,14 +702,15 @@ setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
           if (!q?.is_correct) continue;
           const islandItem = allCheckpointItems.find((it) => it.item_type === 'exercise' && it.exercise_id === q.exercise_id);
           if (!islandItem) continue;
-
           const pts = islandItem.exercise?.points_max ?? q.points_awarded ?? 0;
-
           await upsertCompletionForIslandItem({
             sessionUserId: sess.user.id,
             islandItemId: islandItem.id,
             pointsEarned: pts,
             lastAnswer: q.user_answer ?? null,
+            wrongAttempts: 0,
+            hintsUsed: 0,
+            wrongChoices: [],
           });
         }
       }
@@ -547,6 +723,24 @@ setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
       setSubmittingTest(false);
     }
   }
+
+  // ─── navigation ───────────────────────────────────────────────────────────
+
+  const checkpointStatus = checkpoints.map((cp) => {
+    const exItems = (cp.items || []).filter((i) => i.item_type === 'exercise');
+    if (exItems.length === 0) return 'empty';
+    const doneCount = exItems.filter((i) => progressByItemId[String(i.id)]?.is_completed).length;
+    if (doneCount === 0) return 'future';
+    if (doneCount === exItems.length) return 'done';
+    return 'in_progress';
+  });
+
+  const activeIndex = checkpoints.findIndex((cp) => cp.id === activeCheckpointId);
+
+  function goPrevCheckpoint() { if (activeIndex > 0) setActiveCheckpointId(checkpoints[activeIndex - 1].id); }
+  function goNextCheckpoint() { if (activeIndex < checkpoints.length - 1) setActiveCheckpointId(checkpoints[activeIndex + 1].id); }
+
+  // ─── early returns ─────────────────────────────────────────────────────────
 
   if (loading) {
     return (
@@ -561,165 +755,101 @@ setActiveCheckpointId(nextId || hydratedCheckpoints[0]?.id || null);
 
   function onClickFinishTest() {
     const filled = Object.keys(saved).length;
-    if (filled < testCount) {
-      setPendingFinish({ filled });
-      return;
-    }
+    if (filled < testCount) { setPendingFinish({ filled }); return; }
     setPendingFinish(null);
     reallySubmitTest();
   }
 
-  const backHref =
-    sectionSlug && course_id ? `/courses/${course_id}/sections/${sectionSlug}` : `/courses/${course_id}`;
+  const backHref = sectionSlug && course_id
+    ? `/courses/${course_id}/sections/${sectionSlug}`
+    : `/courses/${course_id}`;
 
-  const checkpointStatus = checkpoints.map((cp) => {
-    const items = cp.items || [];
-    const exerciseItems = items.filter((i) => i.item_type === 'exercise');
-    if (exerciseItems.length === 0) return 'empty';
-    const doneCount = exerciseItems.filter((i) => progressByItemId[String(i.id)]?.is_completed).length;
-
-    if (doneCount === 0) return 'future';
-    if (doneCount === exerciseItems.length) return 'done';
-    return 'in_progress';
-  });
-  const activeIndex = checkpoints.findIndex((cp) => cp.id === activeCheckpointId);
-
-function goPrevCheckpoint() {
-  if (activeIndex > 0) {
-    setActiveCheckpointId(checkpoints[activeIndex - 1].id);
-  }
-}
-
-function goNextCheckpoint() {
-  if (activeIndex < checkpoints.length - 1) {
-    setActiveCheckpointId(checkpoints[activeIndex + 1].id);
-  }
-}
+  // ─── render ────────────────────────────────────────────────────────────────
 
   return (
-  <div className="min-h-screen">
-    <div className="bg-white">
-      <div className="mx-auto max-w-3xl p-6 pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <Link href={backHref} className="text-sm font-semibold text-gray-700 underline">
-              ← {sectionTitle ? sectionTitle : 'Panel'}
-            </Link>
-            <h1 className="mt-2 text-2xl font-bold text-gray-900">
-              {isTest ? 'Test' : 'Wyspa'}: {island?.title}
-            </h1>
-            <p className="mt-1 text-sm text-gray-600">
-              {isTest
-                ? `Odpowiadaj — zapisywanie jest automatyczne. Po zakończeniu pytania podświetlą się na zielono/czerwono. (próg: ${passPercent}%)`
-                : 'Wpisz odpowiedź i kliknij „Sprawdź”, aby zobaczyć czy jest poprawna.'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {islandCompleted && nextIsland ? (
-              <Link
-                href={`/courses/${course_id}/islands/${nextIsland.id}`}
-                className="rounded-full border border-green-700 bg-green-700 px-3 py-1 text-xs font-semibold text-white"
-              >
-                Następna wyspa →
+    <div className="min-h-screen">
+      {/* header */}
+      <div className="bg-white">
+        <div className="mx-auto max-w-3xl p-6 pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <Link href={backHref} className="text-sm font-semibold text-gray-700 underline">
+                ← {sectionTitle || 'Panel'}
               </Link>
-            ) : null}
+              <h1 className="mt-2 text-2xl font-bold text-gray-900">
+                {isTest ? 'Test' : 'Wyspa'}: {island?.title}
+              </h1>
+              <p className="mt-1 text-sm text-gray-600">
+                {isTest
+                  ? `Odpowiadaj — zapisywanie automatyczne. Po zakończeniu podświetlą się na zielono/czerwono. (próg: ${passPercent}%)`
+                  : 'Wpisz odpowiedź i kliknij „Sprawdź", aby zobaczyć czy jest poprawna.'}
+              </p>
+            </div>
 
-            {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
-
-            <span
-              className={[
-                'h-fit rounded-full px-3 py-1 text-xs font-semibold',
-                isTest ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800',
-              ].join(' ')}
-            >
-              {isTest ? 'TEST' : 'NORMAL'}
-            </span>
+            <div className="flex items-center gap-3">
+              {islandCompleted && nextIsland ? (
+                <Link
+                  href={`/courses/${course_id}/islands/${nextIsland.id}`}
+                  className="rounded-full border border-green-700 bg-green-700 px-3 py-1 text-xs font-semibold text-white"
+                >
+                  Następna wyspa →
+                </Link>
+              ) : null}
+              {!isTest ? <CheckIcon done={islandCompleted} size={22} /> : null}
+              <span className={['h-fit rounded-full px-3 py-1 text-xs font-semibold', isTest ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-800'].join(' ')}>
+                {isTest ? 'TEST' : 'NORMAL'}
+              </span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    {!isTest && checkpoints.length > 0 ? (
-      <div className="sticky top-0 z-50 bg-white border-b border-gray-100">
-        <div className="mx-auto max-w-3xl px-6 py-3">
-  
-    <div className="relative flex items-center gap-3">
-      <button
-        type="button"
-        onClick={goPrevCheckpoint}
-        disabled={activeIndex <= 0}
-        className="rounded-full border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-700 disabled:opacity-40"
-      >
-        ←
-      </button>
+      {/* checkpoint nav */}
+      {!isTest && checkpoints.length > 0 ? (
+        <div className="sticky top-0 z-50 bg-white border-b border-gray-100">
+          <div className="mx-auto max-w-3xl px-6 py-3">
+            <div className="relative flex items-center gap-3">
+              <button type="button" onClick={goPrevCheckpoint} disabled={activeIndex <= 0}
+                className="rounded-full border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-700 disabled:opacity-40">←</button>
 
-      <div className="relative flex-1">
-        <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-green-500" />
+              <div className="relative flex-1">
+                <div className="absolute left-0 right-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-green-500" />
+                <div className="relative flex items-center justify-between">
+                  {checkpoints.map((cp, idx) => {
+                    const status = checkpointStatus[idx];
+                    const isActive = cp.id === activeCheckpointId;
+                    const dotClass = status === 'done' ? 'bg-green-500 border-green-500'
+                      : status === 'in_progress' ? 'bg-green-200 border-green-500'
+                      : 'bg-white border-green-500';
+                    return (
+                      <button key={cp.id} type="button" onClick={() => setActiveCheckpointId(cp.id)} className="flex items-center">
+                        <span className={['h-5 w-5 rounded-full border-2', dotClass, isActive ? 'ring-2 ring-green-700 ring-offset-2' : ''].join(' ')} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-        <div className="relative flex items-center justify-between">
-          {checkpoints.map((cp, idx) => {
-            const status = checkpointStatus[idx];
-            const isActive = cp.id === activeCheckpointId;
-
-            const dotClass =
-              status === 'done'
-                ? 'bg-green-500 border-green-500'
-                : status === 'in_progress'
-                  ? 'bg-green-200 border-green-500'
-                  : 'bg-white border-green-500';
-
-            return (
-              <button
-                key={cp.id}
-                type="button"
-                onClick={() => setActiveCheckpointId(cp.id)}
-                className="flex items-center"
-              >
-                <span
-                  className={[
-                    'h-5 w-5 rounded-full border-2',
-                    dotClass,
-                    isActive ? 'ring-2 ring-green-700 ring-offset-2' : '',
-                  ].join(' ')}
-                />
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={goNextCheckpoint}
-        disabled={activeIndex >= checkpoints.length - 1}
-        className="rounded-full border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-700 disabled:opacity-40"
-      >
-        →
-      </button>
-    </div>
-
-    
-  </div>
-  </div>
-) : null}
-
-
-<div className="mx-auto max-w-3xl p-6">
-  {msg ? (
-    <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
-  ) : null}
-
-  <div className="mt-6 space-y-4">
-          {items.length === 0 ? (
-            <div className="rounded-2xl border border-gray-200 p-4 text-sm text-gray-700">
-              Brak elementów w tym checkpointcie.
+              <button type="button" onClick={goNextCheckpoint} disabled={activeIndex >= checkpoints.length - 1}
+                className="rounded-full border border-gray-300 px-2 py-1 text-sm font-semibold text-gray-700 disabled:opacity-40">→</button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* main content */}
+      <div className="mx-auto max-w-3xl p-6">
+        {msg ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div> : null}
+
+        <div className="mt-6 space-y-4">
+          {items.length === 0 ? (
+            <div className="rounded-2xl border border-gray-200 p-4 text-sm text-gray-700">Brak elementów w tym checkpointcie.</div>
           ) : (
             items.map((it) => {
+              // ── video ──
               if (it.item_type === 'video') {
                 return (
-                  <div key={it.id} className="rounded-2xl border border-gray-200 p-4">
+                  <div key={it.id} className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 bg-transparent">
                     <div className="text-xs font-semibold text-gray-500">WIDEO • #{it.order_index}</div>
                     <div className="mt-1 text-base font-semibold text-gray-900">{it.title || 'Lekcja wideo'}</div>
                     <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl bg-black">
@@ -735,70 +865,94 @@ function goNextCheckpoint() {
                 );
               }
 
+              // ── exercise ──
               const ex = it.exercise;
-const exId = ex?.id;
+              const exId = ex?.id;
 
-const progress = progressByItemId[String(it.id)] || {};
-const persistedAnswer = progress.last_answer || {};
-const a = exId
-  ? (answers[exId] && Object.keys(answers[exId]).length ? answers[exId] : persistedAnswer)
-  : {};
+              const prog = progressByItemId[String(it.id)] || {};
+              const persistedAnswer = prog.last_answer || {};
+              const a = exId
+                ? (answers[exId] && Object.keys(answers[exId]).length ? answers[exId] : persistedAnswer)
+                : {};
 
-const itemCompleted = Boolean(progress.is_completed);
-const showCorrectState = !isTest && (itemCompleted || results[exId]?.is_correct === true);
-const flashState = flashById[exId];
+                           const itemCompleted = Boolean(prog.is_completed);
+              const gaveUp = Boolean(gaveUpByItemId[String(it.id)]) || (Boolean(prog.is_completed) && prog.points_earned === 0 && prog.wrong_attempts > 0);
+              const showCorrectState = !isTest && (itemCompleted && !gaveUp || results[exId]?.is_correct === true);
+              const showGaveUpState = !isTest && gaveUp;
+              const flashState = flashById[exId];
+
+                                          const wrongNumericFromDb = Array.isArray(prog.wrong_numeric_values) ? prog.wrong_numeric_values : [];
+              const wrongNumericLocal = wrongNumericByItemId[String(it.id)] || [];
+              const wrongNumericMerged = [...new Set([...wrongNumericFromDb, ...wrongNumericLocal])];
+              const totalNumericAttempts = totalNumericAttemptsByItemId[String(it.id)] || wrongNumericFromDb.length;
+              const showGiveUpButton = !isTest && !showCorrectState && !showGaveUpState
+                && ex?.answer_type === 'numeric'
+                && (wrongNumericMerged.length >= 5 || totalNumericAttempts >= 5);
+
+              // points display
+              const wrongAttempts = Number(prog.wrong_attempts || 0);
+              const hintsUsed = Number(prog.hints_used || 0);
+              const maxPct = calcMaxPercent(wrongAttempts, hintsUsed);
+              const pointsMax = Number(ex?.points_max ?? 0);
+              const pointsEarned = itemCompleted ? Number(prog.points_earned || 0) : null;
 
               const qRes = exId ? resultByExerciseId.get(exId) : null;
               const showGradingInCard = isTest && Boolean(testResult) && Boolean(qRes);
 
-              const cardStyle = showGradingInCard
-                ? !qRes.answered
-                  ? 'border-gray-200 bg-white'
-                  : qRes.is_correct
-                    ? 'border-green-200 bg-green-50'
-                    : 'border-red-200 bg-red-50'
+                            const cardStyle = showGradingInCard
+                ? !qRes.answered ? 'border-gray-200 bg-white'
+                  : qRes.is_correct ? 'border-green-200 bg-green-50'
+                  : 'border-red-200 bg-red-50'
+                : showGaveUpState ? 'border-red-200 bg-red-50'
+                : showCorrectState ? 'border-green-200 bg-green-50'
                 : 'border-gray-200 bg-white';
-
               const badge = showGradingInCard
-                ? !qRes.answered
-                  ? { text: 'BRAK', cls: 'bg-gray-100 text-gray-800 border-gray-200' }
-                  : qRes.is_correct
-                    ? { text: 'OK', cls: 'bg-green-100 text-green-800 border-green-200' }
-                    : { text: 'BŁĄD', cls: 'bg-red-100 text-red-800 border-red-200' }
+                ? !qRes.answered ? { text: 'BRAK', cls: 'bg-gray-100 text-gray-800 border-gray-200' }
+                  : qRes.is_correct ? { text: 'OK', cls: 'bg-green-100 text-green-800 border-green-200' }
+                  : { text: 'BŁĄD', cls: 'bg-red-100 text-red-800 border-red-200' }
                 : null;
 
               const hints = Array.isArray(ex?.hints) ? ex.hints : [];
+              const revealedCount = revealedHintsByExId[exId] || 0;
               const abcdOptions = getAbcdOptionsFromAnswerKey(ex?.answer_key);
-
-              
 
               return (
                 <div
-  key={it.id}
-  className={[
-    'rounded-2xl border p-4',
-    cardStyle,
-    showCorrectState ? 'exercise-card--correct' : '',
-    flashState === 'wrong' ? 'exercise-card--wrong' : '',
-  ].join(' ')}
->
+                  key={it.id}
+                  className={[
+                    'rounded-2xl border p-4',
+                    cardStyle,
+                    showCorrectState ? 'exercise-card--correct' : '',
+                    flashState === 'wrong' ? 'exercise-card--wrong' : '',
+                  ].join(' ')}
+                >
+                  {/* exercise header */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      {!isTest ? <CheckIcon done={itemCompleted} size={20} className="mt-0.5" /> : null}
-
+                      {!isTest ? <CheckIcon done={itemCompleted && !gaveUp} gaveUp={gaveUp} size={20} className="mt-0.5" /> : null}
                       <div>
                         <div className="text-xs font-semibold text-gray-500">ZADANIE • #{it.order_index}</div>
                         <div className="mt-1 text-base font-semibold text-gray-900">{it.title || 'Ćwiczenie'}</div>
                       </div>
                     </div>
 
-                    {badge ? (
-                      <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${badge.cls}`}>
-                        {badge.text}
-                      </span>
-                    ) : null}
+                    <div className="flex flex-col items-end gap-1">
+                      {badge ? (
+                        <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${badge.cls}`}>{badge.text}</span>
+                      ) : null}
+
+                     {/* points indicator */}
+{!isTest && pointsMax > 0 && itemCompleted ? (
+  <div className="text-right text-xs">
+    <span className={`font-semibold ${pointsEarned === 0 ? 'text-red-600' : 'text-green-700'}`}>
+      +{pointsEarned} pkt
+    </span>
+  </div>
+) : null}
+                    </div>
                   </div>
 
+                  {/* prompt */}
                   <div className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{ex?.prompt || '(brak treści)'}</div>
 
                   {ex?.description ? (
@@ -808,70 +962,94 @@ const flashState = flashById[exId];
                   ) : null}
 
                   {ex?.image_url ? (
-                    <img
-                      src={ex.image_url}
-                      alt="Obrazek do zadania"
-                      className="mt-3 w-full rounded-xl border border-gray-200"
-                      loading="lazy"
-                    />
+                    <img src={ex.image_url} alt="Obrazek do zadania" className="mt-3 w-full rounded-xl border border-gray-200" loading="lazy" />
                   ) : null}
 
-                  {hints.length > 0 ? (
-                    <div className="mt-3">
-                      <button
-                        type="button"
-                        className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900"
-                        onClick={() =>
-                          setShowHintsByExerciseId((prev) => ({ ...prev, [exId]: !Boolean(prev[exId]) }))
-                        }
-                      >
-                        {showHintsByExerciseId[exId] ? 'Ukryj podpowiedzi' : `Pokaż podpowiedzi (${hints.length})`}
-                      </button>
-
-                      {showHintsByExerciseId[exId] ? (
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-800">
-                          {hints.map((h, idx) => (
-                            <li key={idx} className="whitespace-pre-wrap">
-                              {String(h)}
-                            </li>
-                          ))}
-                        </ul>
+                                    {/* poprawna odpowiedź po poddaniu */}
+                  {showGaveUpState && ex ? (
+                    <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm">
+                      <div className="font-semibold text-red-800">Poddałeś się — poprawna odpowiedź:</div>
+                      {ex.answer_type === 'numeric' ? (
+                        <div className="mt-1 text-red-900">
+                          <span className="font-bold">{ex.answer_key?.value ?? '—'}</span>
+                        </div>
+                      ) : ex.answer_type === 'abcd' ? (
+                        <div className="mt-1 text-red-900">
+                          Odpowiedź: <span className="font-bold">{ex.answer_key?.correct ?? '—'}</span>
+                          {ex.answer_key?.options?.[ex.answer_key?.correct] ? (
+                            <span className="ml-1 text-red-700">— {ex.answer_key.options[ex.answer_key.correct]}</span>
+                          ) : null}
+                        </div>
                       ) : null}
+                      <div className="mt-1 text-xs text-red-600">Zadanie ukończone z wynikiem 0 pkt.</div>
                     </div>
                   ) : null}
 
+                                    {/* hints — one by one */}
+{hints.length > 0 && !showCorrectState && !showGaveUpState ? (
+  <div className="mt-3">
+    {/* already revealed hints */}
+    {revealedCount > 0 ? (
+      <div className="mb-2 space-y-2">
+        {hints.slice(0, revealedCount).map((h, idx) => (
+          <div
+            key={idx}
+            className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+          >
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-200 text-xs font-bold text-amber-800">
+              {idx + 1}
+            </span>
+            <span className="whitespace-pre-wrap">{String(h)}</span>
+          </div>
+        ))}
+      </div>
+    ) : null}
+
+    {/* button to reveal next hint */}
+    {revealedCount < hints.length ? (
+      <button
+        type="button"
+        className="group flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-all hover:border-amber-300 hover:bg-amber-50 hover:text-amber-800"
+        onClick={() => handleRevealHint(it)}
+      >
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-100 text-xs font-bold text-amber-700 group-hover:bg-amber-200">
+          ?
+        </span>
+        {revealedCount === 0
+          ? 'Pokaż podpowiedź'
+          : `Następna podpowiedź (${revealedCount + 1}/${hints.length})`}
+      </button>
+    ) : (
+      <div className="flex items-center gap-2 text-xs text-gray-400">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-400">
+          ✓
+        </span>
+        Wszystkie podpowiedzi odkryte
+      </div>
+    )}
+  </div>
+) : null}
+
+                  {/* solution video */}
                   {ex?.solution_video_url ? (
                     <div className="mt-3">
                       <button
                         type="button"
                         className="rounded-xl border border-indigo-700 bg-indigo-700 px-3 py-2 text-sm font-semibold text-white"
-                        onClick={() =>
-                          setShowExplanationByExerciseId((prev) => ({ ...prev, [exId]: !Boolean(prev[exId]) }))
-                        }
+                        onClick={() => setShowExplanationByExerciseId((prev) => ({ ...prev, [exId]: !Boolean(prev[exId]) }))}
                       >
                         {showExplanationByExerciseId[exId] ? 'Ukryj wyjaśnienie' : 'Pokaż wyjaśnienie'}
                       </button>
 
                       {showExplanationByExerciseId[exId] ? (
                         <div className="mt-2">
-                          <a
-                            href={ex.solution_video_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-sm font-semibold text-indigo-700 underline"
-                          >
+                          <a href={ex.solution_video_url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-indigo-700 underline">
                             Otwórz link do wyjaśnienia →
                           </a>
-
                           {toEmbedUrl(ex.solution_video_url)?.includes('youtube.com/embed/') ? (
                             <div className="mt-3 aspect-video w-full overflow-hidden rounded-xl bg-black">
-                              <iframe
-                                className="h-full w-full"
-                                src={toEmbedUrl(ex.solution_video_url)}
-                                title="Wyjaśnienie"
-                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                allowFullScreen
-                              />
+                              <iframe className="h-full w-full" src={toEmbedUrl(ex.solution_video_url)} title="Wyjaśnienie"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
                             </div>
                           ) : null}
                         </div>
@@ -879,186 +1057,134 @@ const flashState = flashById[exId];
                     </div>
                   ) : null}
 
+                                    {/* answer input */}
                   <div className="mt-3">
                     {ex?.answer_type === 'numeric' ? (
-                      <input
-  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-60"
-  placeholder="Wpisz odpowiedź (liczba)"
-  value={a.value || ''}
-  disabled={showCorrectState}
-  onChange={(e) => {
-    const value = e.target.value;
-    setAnswers((prev) => ({
-      ...prev,
-      [exId]: { ...(prev[exId] || {}), value },
-    }));
-    if (isTest && session) scheduleSave(exId, { value });
-  }}
-  onBlur={() => {
-    if (!isTest) return;
-    const value = (answers[exId]?.value ?? '').toString();
-    if (session) scheduleSave(exId, { value }, 0);
-  }}
-/>
+                      !showGaveUpState ? (
+                        <input
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm disabled:opacity-60"
+                          placeholder="Wpisz odpowiedź (liczba)"
+                          value={a.value || ''}
+                          disabled={showCorrectState}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setAnswers((prev) => ({ ...prev, [exId]: { ...(prev[exId] || {}), value } }));
+                            if (isTest && session) scheduleSave(exId, { value });
+                          }}
+                          onBlur={() => {
+                            if (!isTest) return;
+                            const value = (answers[exId]?.value ?? '').toString();
+                            if (session) scheduleSave(exId, { value }, 0);
+                          }}
+                        />
+                      ) : null
                     ) : ex?.answer_type === 'abcd' ? (
                       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {['A', 'B', 'C', 'D'].map((opt) => {
                           const selected = (a.choice || '').toUpperCase() === opt;
                           const labelText = abcdOptions?.[opt] ? `${opt}) ${abcdOptions[opt]}` : opt;
-
                           return (
                             <button
-  key={opt}
-  type="button"
-  disabled={showCorrectState}
-  className={[
-    'rounded-xl border px-3 py-2 text-left text-sm font-semibold',
-    selected
-      ? showCorrectState
-        ? 'border-green-700 bg-green-700 text-white'
-        : 'border-gray-900 bg-gray-900 text-white'
-      : 'border-gray-300 bg-white text-gray-900',
-  ].join(' ')}
-  onClick={() => {
-    const prevChoice = (answers?.[exId]?.choice || '').toUpperCase();
-    const nextChoice = prevChoice === opt ? '' : opt;
-
-    setAnswers((prev) => ({
-      ...prev,
-      [exId]: { ...(prev[exId] || {}), choice: nextChoice },
-    }));
-
-    if (isTest) {
-      if (session) {
-        saveAttempt(exId, { choice: nextChoice }, { storeResult: false });
-      } else {
-        setMsg('Musisz się zalogować, aby zapisać odpowiedzi.');
-      }
-    }
-  }}
->
-  {labelText}
-</button>
+                              key={opt}
+                              type="button"
+                              disabled={showCorrectState}
+                              className={[
+                                'rounded-xl border px-3 py-2 text-left text-sm font-semibold',
+                                selected
+                                  ? showCorrectState ? 'border-green-700 bg-green-700 text-white' : 'border-gray-900 bg-gray-900 text-white'
+                                  : 'border-gray-300 bg-white text-gray-900',
+                              ].join(' ')}
+                              onClick={() => {
+                                const prevChoice = (answers?.[exId]?.choice || '').toUpperCase();
+                                const nextChoice = prevChoice === opt ? '' : opt;
+                                setAnswers((prev) => ({ ...prev, [exId]: { ...(prev[exId] || {}), choice: nextChoice } }));
+                                if (isTest && session) saveAttempt(exId, { choice: nextChoice }, { storeResult: false });
+                              }}
+                            >
+                              {labelText}
+                            </button>
                           );
                         })}
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-600">
-                        Typ zadania: <code>{ex?.answer_type}</code> (MVP jeszcze nieobsługiwane)
-                      </div>
+                      <div className="text-sm text-gray-600">Typ zadania: <code>{ex?.answer_type}</code> (nieobsługiwane)</div>
                     )}
                   </div>
 
+                  {/* test grading details */}
                   {showGradingInCard ? (
                     <div className="mt-3 rounded-xl border border-gray-200 bg-white/70 p-3 text-sm text-gray-900">
-                      <div>
-                        <span className="font-semibold">Twoja odpowiedź:</span> {formatUserAnswer(qRes)}
-                      </div>
-                      <div className="mt-1">
-                        <span className="font-semibold">Poprawna odpowiedź:</span> {formatCorrectAnswer(qRes)}
-                      </div>
-                      {!qRes.answered ? (
-                        <div className="mt-2 text-xs text-gray-700">Nie zapisano odpowiedzi — policzone jako błędne.</div>
-                      ) : null}
+                      <div><span className="font-semibold">Twoja odpowiedź:</span> {formatUserAnswer(qRes)}</div>
+                      <div className="mt-1"><span className="font-semibold">Poprawna odpowiedź:</span> {formatCorrectAnswer(qRes)}</div>
+                      {!qRes.answered ? <div className="mt-2 text-xs text-gray-700">Nie zapisano odpowiedzi — policzone jako błędne.</div> : null}
                     </div>
                   ) : null}
 
+                                    {/* check button + give up (normal mode) */}
                   {!isTest && (ex?.answer_type === 'numeric' || ex?.answer_type === 'abcd') ? (
-  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-    {!showCorrectState ? (
-  <button
-    type="button"
-    className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
-    onClick={() => {
-      const immediate = getImmediateResult(ex, answers[exId] || {});
-      setResults((prev) => ({ ...prev, [exId]: immediate }));
-
-      if (!immediate.is_correct) {
-        setFlashById((prev) => ({ ...prev, [exId]: 'wrong' }));
-        setTimeout(() => {
-          setFlashById((prev) => ({ ...prev, [exId]: null }));
-        }, 700);
-      } else {
-        setFlashById((prev) => ({ ...prev, [exId]: null }));
-      }
-
-      saveAttempt(exId, answers[exId] || {}, { storeResult: true });
-    }}
-  >
-    Sprawdź
-  </button>
-) : null}
-  </div>
-) : null}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {!showCorrectState && !showGaveUpState ? (
+                        <button
+                          type="button"
+                          className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white"
+                          onClick={() => handleCheck(it)}
+                        >
+                          Sprawdź
+                        </button>
+                      ) : null}
+                      {showGiveUpButton ? (
+                        <button
+                          type="button"
+                          className="rounded-xl border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50"
+                          onClick={() => handleGiveUp(it)}
+                        >
+                          Pokaż poprawną odpowiedź
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               );
             })
           )}
-          {!isTest && checkpoints.length > 0 ? (
-  <div className="mt-8 flex items-center justify-between">
-    <button
-      type="button"
-      onClick={goPrevCheckpoint}
-      disabled={activeIndex <= 0}
-      className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 disabled:opacity-40"
-    >
-      ← Wstecz
-    </button>
 
-    <button
-      type="button"
-      onClick={goNextCheckpoint}
-      disabled={activeIndex >= checkpoints.length - 1}
-      className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-    >
-      Dalej →
-    </button>
-  </div>
-) : null}
+          {/* checkpoint navigation bottom */}
+          {!isTest && checkpoints.length > 0 ? (
+            <div className="mt-8 flex items-center justify-between">
+              <button type="button" onClick={goPrevCheckpoint} disabled={activeIndex <= 0}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 disabled:opacity-40">← Wstecz</button>
+              <button type="button" onClick={goNextCheckpoint} disabled={activeIndex >= checkpoints.length - 1}
+                className="rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Dalej →</button>
+            </div>
+          ) : null}
         </div>
 
+        {/* test panel */}
         {isTest ? (
           <div className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
             <div className="text-sm text-indigo-900">
-              Wypełnione: <b>{Object.keys(saved).length}</b> / {testCount} (liczone jako „zapisane”)
+              Wypełnione: <b>{Object.keys(saved).length}</b> / {testCount}
             </div>
 
             {!testResult && pendingFinish ? (
               <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
                 <div className="font-semibold">Nie uzupełniłeś wszystkich odpowiedzi.</div>
-                <div className="mt-1">
-                  Uzupełniono {pendingFinish.filled}/{testCount}. Brakujące zostaną policzone jako błędne.
-                </div>
+                <div className="mt-1">Uzupełniono {pendingFinish.filled}/{testCount}. Brakujące zostaną policzone jako błędne.</div>
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                  <button
-                    type="button"
+                  <button type="button" disabled={!session}
                     className="rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-semibold text-white"
-                    onClick={() => {
-                      setPendingFinish(null);
-                      reallySubmitTest();
-                    }}
-                    disabled={!session}
-                  >
+                    onClick={() => { setPendingFinish(null); reallySubmitTest(); }}>
                     {session ? 'Zakończ mimo to' : 'Zaloguj się, aby zakończyć'}
                   </button>
-                  <button
-                    type="button"
-                    className="rounded-xl border border-red-700 bg-white px-4 py-2 text-sm font-semibold text-red-700"
-                    onClick={() => setPendingFinish(null)}
-                  >
-                    Wróć i uzupełnij
-                  </button>
+                  <button type="button" className="rounded-xl border border-red-700 bg-white px-4 py-2 text-sm font-semibold text-red-700"
+                    onClick={() => setPendingFinish(null)}>Wróć i uzupełnij</button>
                 </div>
               </div>
             ) : null}
 
             {!testResult ? (
-              <button
-                type="button"
-                onClick={onClickFinishTest}
-                disabled={submittingTest || !session}
-                className="mt-3 rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
+              <button type="button" onClick={onClickFinishTest} disabled={submittingTest || !session}
+                className="mt-3 rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                 {submittingTest ? 'Zapisuję…' : session ? 'Zakończ test' : 'Zaloguj się, aby zakończyć test'}
               </button>
             ) : (
@@ -1071,21 +1197,13 @@ const flashState = flashById[exId];
           </div>
         ) : null}
 
+        {/* test summary */}
         {isTest && testResult ? (
-          <div
-            id="test-summary"
-            className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900"
-          >
+          <div id="test-summary" className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
             <div className="font-semibold">Podsumowanie</div>
-            <div className="mt-1">
-              Wynik: <b>{testResult.score_percent}%</b>
-            </div>
-            <div>
-              Poprawne: {testResult.correctCount} / {testResult.test_questions_count ?? testCount}
-            </div>
-            <div>
-              Zaliczone: {testResult.passed ? 'TAK' : 'NIE'} (próg {testResult.pass_percent ?? passPercent}%)
-            </div>
+            <div className="mt-1">Wynik: <b>{testResult.score_percent}%</b></div>
+            <div>Poprawne: {testResult.correctCount} / {testResult.test_questions_count ?? testCount}</div>
+            <div>Zaliczone: {testResult.passed ? 'TAK' : 'NIE'} (próg {testResult.pass_percent ?? passPercent}%)</div>
             <div>Najlepszy wynik w dziale: {testResult.best_test_score_percent}%</div>
             <div className="mt-2 text-xs text-indigo-900/80">Przewiń w górę — zadania zostały oznaczone na zielono/czerwono.</div>
           </div>
