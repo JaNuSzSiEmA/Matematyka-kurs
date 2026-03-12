@@ -80,6 +80,20 @@ function CheckIcon({ done, size = 18, className = '' }) {
   );
 }
 
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+const DIFFICULTY_BORDER = {
+  1: 'border-blue-400',
+  2: 'border-green-400',
+  3: 'border-yellow-400',
+  4: 'border-orange-400',
+  5: 'border-red-500',
+};
+
 export default function IslandPage() {
   const router = useRouter();
   const { course_id, island_id } = router.query;
@@ -112,6 +126,30 @@ export default function IslandPage() {
   // progress: island_item_id -> { is_completed, points_earned }
   const [progressByItemId, setProgressByItemId] = useState({});
   const [userId, setUserId] = useState(null);
+
+  // ── TEST SYSTEM STATE ──────────────────────────────────────
+  // Phase: 'loading' | 'intro' | 'active' | 'paused' | 'finished'
+  const [testPhase, setTestPhase] = useState('loading');
+  const [testExercises, setTestExercises] = useState([]);
+  const [testSessionId, setTestSessionId] = useState(null);
+  const [testExpiresAt, setTestExpiresAt] = useState(null);
+  const [testTimeLimitSeconds, setTestTimeLimitSeconds] = useState(1800);
+  const [testPassingScorePercent, setTestPassingScorePercent] = useState(50);
+  const [testAnswers, setTestAnswers] = useState({});
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isSubmittingTest, setIsSubmittingTest] = useState(false);
+  const [testFinishedResult, setTestFinishedResult] = useState(null);
+  const [testItemCount, setTestItemCount] = useState(0);
+
+  const timerRef = useRef(null);
+  const testAnswersRef = useRef({});
+  const autoSubmittedRef = useRef(false);
+
+  // Keep testAnswersRef in sync
+  useEffect(() => {
+    testAnswersRef.current = testAnswers;
+  }, [testAnswers]);
 
   const resultByExerciseId = useMemo(() => {
     const map = new Map();
@@ -200,6 +238,16 @@ export default function IslandPage() {
       setUserId(null);
       setSectionSlug(null);
       setSectionTitle(null);
+      // Reset test state
+      setTestPhase('loading');
+      setTestExercises([]);
+      setTestAnswers({});
+      setTimeRemaining(0);
+      setTestExpiresAt(null);
+      setTestFinishedResult(null);
+      testAnswersRef.current = {};
+      autoSubmittedRef.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
 
       const {
         data: { session },
@@ -213,7 +261,7 @@ export default function IslandPage() {
 
       const { data: isl, error: islErr } = await supabase
         .from('islands')
-        .select('id, title, type, order_index, section_id, is_active')
+        .select('id, title, type, order_index, section_id, is_active, time_limit_seconds, intro_script, passing_score_percent')
         .eq('id', island_id)
         .single();
 
@@ -243,6 +291,68 @@ export default function IslandPage() {
         setSectionSlug(secRules.slug || null);
         setSectionTitle(secRules.title || null);
       }
+
+      // ── TEST ISLAND BRANCH ─────────────────────────────────
+      if (isl.type === 'test') {
+        setTestTimeLimitSeconds(Number(isl.time_limit_seconds || 1800));
+        setTestPassingScorePercent(Number(isl.passing_score_percent ?? 50));
+
+        // Get item count for intro display
+        const { count: itemCount } = await supabase
+          .from('island_test_items')
+          .select('id', { count: 'exact', head: true })
+          .eq('island_id', island_id);
+        setTestItemCount(itemCount || 0);
+
+        const statusRes = await fetch(`/api/test-status?island_id=${island_id}`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!statusRes.ok) {
+          setMsg('Błąd sprawdzania statusu testu.');
+          setLoading(false);
+          return;
+        }
+        const status = await statusRes.json();
+
+        if (status.phase === 'finished') {
+          setTestPhase('finished');
+          setTestFinishedResult(status.result);
+          setLoading(false);
+          return;
+        }
+
+        if (status.phase === 'active' || status.phase === 'paused') {
+          const startRes = await fetch('/api/test-start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ island_id }),
+          });
+          const startData = await startRes.json();
+          if (!startRes.ok) {
+            setMsg(startData.error || 'Błąd ładowania testu.');
+            setLoading(false);
+            return;
+          }
+          setTestExercises(startData.exercises || []);
+          setTestSessionId(startData.session_id);
+          setTestExpiresAt(startData.expires_at);
+          if (startData.time_limit_seconds) setTestTimeLimitSeconds(Number(startData.time_limit_seconds));
+          if (startData.passing_score_percent !== undefined)
+            setTestPassingScorePercent(Number(startData.passing_score_percent));
+          if (status.phase === 'active') {
+            setTimeRemaining(status.time_remaining_seconds || 0);
+          }
+          setTestPhase(status.phase);
+          setLoading(false);
+          return;
+        }
+
+        // intro
+        setTestPhase('intro');
+        setLoading(false);
+        return;
+      }
+      // ── END TEST BRANCH ────────────────────────────────────
 
       const { data: its, error: itsErr } = await supabase
         .from('island_items')
@@ -304,6 +414,162 @@ export default function IslandPage() {
       setLoading(false);
     })();
   }, [course_id, island_id, router]);
+
+  // ── TIMER EFFECT ──────────────────────────────────────────
+  useEffect(() => {
+    if (testPhase !== 'active' || !testExpiresAt) return;
+
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((new Date(testExpiresAt) - Date.now()) / 1000));
+      setTimeRemaining(remaining);
+      if (remaining <= 0 && !autoSubmittedRef.current) {
+        autoSubmittedRef.current = true;
+        clearInterval(timerRef.current);
+        doSubmitTest(testAnswersRef.current);
+      }
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, [testPhase, testExpiresAt]);
+
+  // ── TEST HANDLERS ─────────────────────────────────────────
+  async function handleStartTest() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      router.replace('/login');
+      return;
+    }
+
+    setMsg('');
+    setTestPhase('loading');
+    setTestAnswers({});
+    testAnswersRef.current = {};
+    autoSubmittedRef.current = false;
+
+    const res = await fetch('/api/test-start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ island_id }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      setMsg(data.error || 'Błąd uruchamiania testu.');
+      setTestPhase('intro');
+      return;
+    }
+
+    if (data.already_completed) {
+      setTestPhase('finished');
+      setTestFinishedResult(data.result);
+      return;
+    }
+
+    setTestExercises(data.exercises || []);
+    setTestSessionId(data.session_id);
+    setTestExpiresAt(data.expires_at);
+    if (data.time_limit_seconds) setTestTimeLimitSeconds(Number(data.time_limit_seconds));
+    if (data.passing_score_percent !== undefined) setTestPassingScorePercent(Number(data.passing_score_percent));
+    const initialRemaining = Math.max(0, Math.floor((new Date(data.expires_at) - Date.now()) / 1000));
+    setTimeRemaining(initialRemaining);
+    setTestPhase('active');
+  }
+
+  async function handlePauseTest() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      router.replace('/login');
+      return;
+    }
+
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    const res = await fetch('/api/test-pause', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ island_id }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setMsg(data.error || 'Błąd pauzy.');
+      return;
+    }
+    setTestPhase('paused');
+  }
+
+  async function handleResumeTest() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      router.replace('/login');
+      return;
+    }
+
+    const res = await fetch('/api/test-resume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ island_id }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setMsg(data.error || 'Błąd wznawiania testu.');
+      return;
+    }
+    setTestExpiresAt(data.expires_at);
+    autoSubmittedRef.current = false;
+    setTestPhase('active');
+  }
+
+  async function doSubmitTest(answers) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      router.replace('/login');
+      return;
+    }
+
+    setIsSubmittingTest(true);
+    setMsg('');
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    try {
+      const res = await fetch('/api/test-submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ island_id, answers }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg(data.error || 'Błąd wysyłania testu.');
+        setIsSubmittingTest(false);
+        return;
+      }
+      setTestFinishedResult({
+        score_percent: data.score_percent,
+        points_earned: data.points_earned,
+        points_max: data.points_max,
+        passed: data.passed,
+        per_question: data.per_question,
+        passing_score_percent: data.passing_score_percent,
+      });
+      setTestPhase('finished');
+    } finally {
+      setIsSubmittingTest(false);
+    }
+  }
+
+  function handleConfirmSubmit() {
+    setShowConfirmModal(false);
+    doSubmitTest(testAnswersRef.current);
+  }
 
   async function saveAttempt(exerciseId, answer, { storeResult } = { storeResult: false }) {
     if (inflightRef.current.get(exerciseId)) return;
@@ -446,6 +712,363 @@ export default function IslandPage() {
     );
   }
 
+  // ── TEST ISLAND RENDERING ────────────────────────────────────────────────────
+  if (island?.type === 'test') {
+    const backHref =
+      sectionSlug && course_id ? `/courses/${course_id}/sections/${sectionSlug}` : `/courses/${course_id}`;
+    const timeLimitMinutes = Math.round(testTimeLimitSeconds / 60);
+    const filledCount = Object.keys(testAnswers).filter((k) => {
+      const a = testAnswers[k];
+      if (!a) return false;
+      if (a.choice !== undefined) return Boolean(a.choice);
+      if (a.value !== undefined) return String(a.value).trim() !== '';
+      return false;
+    }).length;
+    const totalExercises = testExercises.length;
+    const warningThreshold = Math.floor(testTimeLimitSeconds * 0.15);
+    const isTimerWarning = testPhase === 'active' && timeRemaining <= warningThreshold;
+
+    // ── PHASE: loading ──
+    if (testPhase === 'loading') {
+      return (
+        <div className="min-h-screen bg-white">
+          <div className="mx-auto max-w-3xl p-6 text-sm text-gray-700">Ładowanie testu…</div>
+        </div>
+      );
+    }
+
+    // ── PHASE: intro ──
+    if (testPhase === 'intro') {
+      return (
+        <div className="min-h-screen bg-white">
+          <div className="mx-auto max-w-3xl p-6">
+            <Link href={backHref} className="text-sm font-semibold text-gray-700 underline">
+              ← {sectionTitle || 'Panel'}
+            </Link>
+            <h1 className="mt-4 text-2xl font-bold text-gray-900">📝 {island.title}</h1>
+
+            {island.intro_script ? (
+              <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 whitespace-pre-wrap text-sm text-gray-800">
+                {island.intro_script}
+              </div>
+            ) : null}
+
+            <div className="mt-4 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 space-y-2 text-sm text-indigo-900">
+              <div>⏱ Czas na test: <b>{timeLimitMinutes} minut</b></div>
+              <div>🎯 Próg zaliczenia: <b>{testPassingScorePercent}%</b></div>
+              <div>📋 Liczba zadań: <b>{testItemCount}</b></div>
+              <div className="pt-2 border-t border-indigo-200">⚠️ <b>Masz tylko jedno podejście do testu.</b></div>
+              <div>⏸ Podczas testu możesz pauzować — ekran zostanie zaciemniony.</div>
+            </div>
+
+            {msg ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={handleStartTest}
+              className="mt-6 rounded-xl border border-indigo-700 bg-indigo-700 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-800"
+            >
+              Rozpocznij test →
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── PHASE: finished ──
+    if (testPhase === 'finished') {
+      const res = testFinishedResult;
+      const perQ = res?.per_question || (res?.answers ? Object.entries(res.answers).map(([exercise_id, a]) => ({
+        exercise_id,
+        is_correct: a?.is_correct ?? false,
+        answered: Boolean(a),
+        user_answer: a?.user_answer ?? a,
+        correct_answer: a?.correct_answer ?? null,
+        answer_type: a?.answer_type ?? null,
+        test_points: a?.test_points ?? 1,
+      })) : []);
+      const passed = res?.passed ?? false;
+      const scorePercent = res?.score_percent ?? 0;
+      const pointsEarned = res?.points_earned ?? 0;
+      const pointsMax = res?.points_max ?? 0;
+      const passingPct = res?.passing_score_percent ?? testPassingScorePercent;
+
+      return (
+        <div className="min-h-screen bg-white">
+          <div className="mx-auto max-w-3xl p-6">
+            <Link href={backHref} className="text-sm font-semibold text-gray-700 underline">
+              ← {sectionTitle || 'Panel'}
+            </Link>
+            <h1 className="mt-4 text-2xl font-bold text-gray-900">📝 {island.title}</h1>
+
+            <div className={`mt-4 rounded-2xl border p-5 ${passed ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+              <div className={`text-2xl font-bold ${passed ? 'text-green-800' : 'text-red-800'}`}>
+                {passed ? '✅ ZALICZONO' : '❌ NIE ZALICZONO'}
+              </div>
+              <div className="mt-2 text-lg font-semibold text-gray-900">
+                Wynik: {scorePercent}%
+              </div>
+              <div className="text-sm text-gray-700">
+                Punkty: {pointsEarned} / {pointsMax}
+              </div>
+              <div className="text-sm text-gray-600">Próg zaliczenia: {passingPct}%</div>
+            </div>
+
+            {perQ.length > 0 ? (
+              <div className="mt-6 space-y-3">
+                <div className="text-sm font-semibold text-gray-700">Szczegóły zadań:</div>
+                {perQ.map((q, idx) => {
+                  const ex = testExercises.find((e) => e.exercise_id === q.exercise_id || e.id === q.exercise_id);
+                  const diff = ex?.difficulty || 1;
+                  const borderColor = DIFFICULTY_BORDER[diff] || 'border-gray-200';
+                  return (
+                    <div key={q.exercise_id || idx} className={`rounded-2xl border-2 p-4 ${borderColor} ${q.is_correct ? 'bg-green-50' : 'bg-red-50'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-gray-600">Zadanie {idx + 1}</div>
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${q.is_correct ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                          {q.is_correct ? `+${q.test_points ?? 1} pkt` : '0 pkt'}
+                        </span>
+                      </div>
+                      {ex?.prompt ? (
+                        <div className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{ex.prompt}</div>
+                      ) : null}
+                      {!q.is_correct ? (
+                        <div className="mt-2 rounded-xl border border-gray-200 bg-white/70 p-2 text-xs text-gray-700">
+                          <div><span className="font-semibold">Twoja odpowiedź:</span>{' '}
+                            {q.answered
+                              ? (q.answer_type === 'abcd' ? String(q.user_answer?.choice || '—').toUpperCase() : q.user_answer?.value ?? '—')
+                              : '—'}
+                          </div>
+                          {q.correct_answer !== null && q.correct_answer !== undefined ? (
+                            <div><span className="font-semibold">Poprawna:</span>{' '}
+                              {q.answer_type === 'abcd' ? String(q.correct_answer).toUpperCase() : q.correct_answer}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <Link href={backHref} className="mt-6 inline-block rounded-xl border border-gray-900 bg-gray-900 px-4 py-2 text-sm font-semibold text-white">
+              ← Powrót do działu
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    // ── PHASE: active or paused ──
+    const isActive = testPhase === 'active';
+    const isPaused = testPhase === 'paused';
+
+    return (
+      <div className="min-h-screen bg-white">
+        {/* Sticky header bar */}
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 shadow-sm">
+          <div className="text-sm font-semibold text-gray-900 truncate">{island.title}</div>
+          <div className="flex items-center gap-3">
+            <div className={`rounded-xl border px-3 py-1.5 text-sm font-bold tabular-nums ${isTimerWarning ? 'timer-warning border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 text-gray-900'}`}>
+              ⏱ {formatTime(timeRemaining)}
+            </div>
+            {isActive ? (
+              <button
+                type="button"
+                onClick={handlePauseTest}
+                className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+              >
+                ⏸ Pauza
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* Pause overlay */}
+        {isPaused ? (
+          <div className="fixed inset-0 z-30 flex items-center justify-center backdrop-blur-sm bg-black/60">
+            <div className="rounded-2xl border border-white/20 bg-white p-8 text-center shadow-2xl max-w-sm mx-4">
+              <div className="text-2xl font-bold text-gray-900">⏸ Test zapauzowany</div>
+              <div className="mt-2 text-sm text-gray-600">Ekran jest zaciemniony — zadania są niewidoczne.</div>
+              <button
+                type="button"
+                onClick={handleResumeTest}
+                className="mt-6 w-full rounded-xl border border-indigo-700 bg-indigo-700 px-6 py-3 text-sm font-semibold text-white hover:bg-indigo-800"
+              >
+                ▶ Wznów test
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Confirm submit modal */}
+        {showConfirmModal ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl max-w-sm mx-4">
+              <div className="text-lg font-bold text-gray-900">Zakończyć test?</div>
+              <div className="mt-2 text-sm text-gray-700">
+                Wypełniono <b>{filledCount}/{totalExercises}</b> zadań.{' '}
+                {filledCount < totalExercises ? 'Brakujące odpowiedzi zostaną policzone jako błędne.' : ''}
+              </div>
+              <div className="mt-4 flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleConfirmSubmit}
+                  disabled={isSubmittingTest}
+                  className="flex-1 rounded-xl border border-red-700 bg-red-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {isSubmittingTest ? 'Wysyłanie…' : 'Tak, zakończ'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-900"
+                >
+                  Wróć
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Main content */}
+        <div className={`mx-auto max-w-3xl p-4 ${isPaused ? 'blur-sm pointer-events-none select-none' : ''}`}>
+          {msg ? (
+            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{msg}</div>
+          ) : null}
+
+          <div className="space-y-4">
+            {testExercises.map((ex, idx) => {
+              const exId = ex.exercise_id || ex.id;
+              const a = testAnswers[exId] || {};
+              const diff = ex.difficulty || 1;
+              const borderColor = DIFFICULTY_BORDER[diff] || 'border-gray-200';
+              const abcdOptions = ex.answer_key ? getAbcdOptionsFromAnswerKey(ex.answer_key) : null;
+              const hints = Array.isArray(ex.hints) ? ex.hints : [];
+
+              return (
+                <div key={exId} className={`rounded-2xl border-2 p-4 bg-white ${borderColor}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-xs font-semibold text-gray-500">
+                      ZADANIE {idx + 1} • {['', 'Łatwe', 'Podstawowe', 'Średnie', 'Trudne', 'Bardzo trudne'][diff] || `Difficulty ${diff}`}
+                    </div>
+                    <span className="text-xs font-semibold text-gray-500">{ex.test_points ?? 1} pkt</span>
+                  </div>
+
+                  {ex.prompt ? (
+                    <div className="mt-2 whitespace-pre-wrap text-sm text-gray-800">{ex.prompt}</div>
+                  ) : null}
+
+                  {ex.description ? (
+                    <div className="mt-2 whitespace-pre-wrap text-sm text-gray-700">
+                      <span className="font-semibold">Opis:</span> {ex.description}
+                    </div>
+                  ) : null}
+
+                  {ex.image_url ? (
+                    <img
+                      src={ex.image_url}
+                      alt="Obrazek do zadania"
+                      className="mt-3 w-full rounded-xl border border-gray-200"
+                      loading="lazy"
+                    />
+                  ) : null}
+
+                  {hints.length > 0 ? (
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-900"
+                        onClick={() =>
+                          setShowHintsByExerciseId((prev) => ({ ...prev, [exId]: !prev[exId] }))
+                        }
+                      >
+                        {showHintsByExerciseId[exId] ? 'Ukryj podpowiedzi' : `Pokaż podpowiedzi (${hints.length})`}
+                      </button>
+                      {showHintsByExerciseId[exId] ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-800">
+                          {hints.map((h, i) => (
+                            <li key={i} className="whitespace-pre-wrap">{String(h)}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-3">
+                    {ex.answer_type === 'numeric' ? (
+                      <input
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Wpisz odpowiedź (liczba)"
+                        value={a.value || ''}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          const newAnswers = { ...testAnswers, [exId]: { ...(testAnswers[exId] || {}), value } };
+                          setTestAnswers(newAnswers);
+                          testAnswersRef.current = newAnswers;
+                        }}
+                      />
+                    ) : ex.answer_type === 'abcd' ? (
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        {['A', 'B', 'C', 'D'].map((opt) => {
+                          const selected = (a.choice || '').toUpperCase() === opt;
+                          const labelText = abcdOptions?.[opt] ? `${opt}) ${abcdOptions[opt]}` : opt;
+                          return (
+                            <button
+                              key={opt}
+                              type="button"
+                              className={[
+                                'rounded-xl border px-3 py-2 text-left text-sm font-semibold',
+                                selected
+                                  ? 'border-gray-900 bg-gray-900 text-white'
+                                  : 'border-gray-300 bg-white text-gray-900',
+                              ].join(' ')}
+                              onClick={() => {
+                                const prevChoice = (testAnswers[exId]?.choice || '').toUpperCase();
+                                const nextChoice = prevChoice === opt ? '' : opt;
+                                const newAnswers = { ...testAnswers, [exId]: { ...(testAnswers[exId] || {}), choice: nextChoice } };
+                                setTestAnswers(newAnswers);
+                                testAnswersRef.current = newAnswers;
+                              }}
+                            >
+                              {labelText}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-600">
+                        Typ: <code>{ex.answer_type}</code>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Bottom bar */}
+          <div className="mt-6 rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+            <div className="text-sm text-indigo-900">
+              Wypełnione: <b>{filledCount}</b> / {totalExercises}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowConfirmModal(true)}
+              disabled={isSubmittingTest}
+              className="mt-3 rounded-xl border border-indigo-700 bg-indigo-700 px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {isSubmittingTest ? 'Wysyłanie…' : 'Zakończ test'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // ── END TEST ISLAND RENDERING ────────────────────────────────────────────────
   const isTest = island?.type === 'test';
   const testCount = isTest ? (testRules?.test_questions_count ?? 6) : null;
   const passPercent = isTest ? (testRules?.pass_percent ?? 60) : null;
