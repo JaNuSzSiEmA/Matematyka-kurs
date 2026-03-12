@@ -445,6 +445,14 @@ export default function AdminIslandEditor() {
                   '—'
                 )}
               </p>
+              {island?.type === 'test' ? (
+                <Link
+                  href={`/admin/islands/test/${island_id}`}
+                  className="mt-2 inline-block rounded-xl border border-indigo-700 bg-indigo-700 px-4 py-1.5 text-sm font-semibold text-white"
+                >
+                  🧪 → Edytuj jako TEST
+                </Link>
+              ) : null}
             </div>
           </div>
 

@@ -30,6 +30,15 @@ export default function AdminIndex() {
                 Szybkie dodawanie + topic + flagi (repertory/generator/minigame/course)
               </div>
             </Link>
+
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+              <div className="font-semibold text-indigo-900">🧪 Wyspy testowe</div>
+              <div className="mt-1 text-sm text-indigo-700">
+                Aby edytować wyspę testową (type=test), przejdź do{' '}
+                <Link href="/admin/sections" className="underline">Sekcje</Link>{' '}
+                → wybierz wyspę → kliknij „🧪 → Edytuj jako TEST"
+              </div>
+            </div>
           </div>
         </div>
       </div>
